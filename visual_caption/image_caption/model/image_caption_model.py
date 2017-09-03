@@ -8,4 +8,7 @@ from visual_caption.base.model.base_model import BaseModel
 
 
 class ImageCaptionModel(BaseModel):
+    def __init__(self, config, data_loader):
+        super().__init__(config=config, data_loader=data_loader)
+
     pass

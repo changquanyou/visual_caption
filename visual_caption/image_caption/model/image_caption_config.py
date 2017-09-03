@@ -8,4 +8,7 @@ from visual_caption.base.model.base_config import BaseConfig
 
 
 class ImageCaptionConfig(BaseConfig):
+
+    def __init__(self, model_name):
+        super().__init__(model_name=model_name)
     pass
