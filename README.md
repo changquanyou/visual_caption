@@ -1,0 +1,3 @@
+# Image-Captioning
+Teach the computer to understand images and automatically generate captions in Chinese.
+....
