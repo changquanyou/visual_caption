@@ -6,8 +6,6 @@ from __future__ import unicode_literals  # compatible with python3 unicode codin
 
 from abc import ABCMeta, abstractmethod
 
-import tensorflow as tf
-
 
 class BaseRunner(object):
     """

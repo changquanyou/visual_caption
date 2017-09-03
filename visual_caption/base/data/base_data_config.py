@@ -6,7 +6,7 @@ from __future__ import unicode_literals  # compatible with python3 unicode codin
 
 import os
 
-BATCH_SIZE = 10 # default batch size
+BATCH_SIZE = 10  # default batch size
 BASE_DATA_DIR = "/home/liuxiaoming/data/"
 MODULE_NAME = "tf-visgen"  # default model name
 
