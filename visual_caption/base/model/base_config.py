@@ -17,7 +17,7 @@ decay_rate = 0.96
 dropout_keep_prob = 0.5
 initializer_scale = 0.08
 early_stopping = 100
-base_dir = "/home/liuxiaoming/data/tf-visgen/"
+base_dir = "/home/liuxiaoming/data/visual_caption/"
 
 
 class BaseConfig(object):

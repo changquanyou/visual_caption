@@ -8,4 +8,6 @@ from visual_caption.base.data.base_data_config import BaseDataConfig
 
 
 class ImageCaptionDataConfig(BaseDataConfig):
+
+
     pass
