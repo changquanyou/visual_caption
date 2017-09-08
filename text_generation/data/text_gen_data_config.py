@@ -6,12 +6,12 @@ from __future__ import unicode_literals  # compatible with python3 unicode codin
 
 import os
 
-from tf_visgen.base.data.base_data_config import BaseDataConfig
+from visual_caption.base.data.base_data_config import BaseDataConfig
 
 
 class TextGenDataConfig(BaseDataConfig):
     def __init__(self, model_name):
         super().__init__(model_name=model_name)
-        self.toke2vec_file = os.path.join(self.base_data_dir, "word2vec/GoogleNews-vectors-negative300.bin")
+        self.toke2vec_file = os.path.join(self.base_data_dir, "word2vec/model300")
 
     pass

@@ -4,7 +4,7 @@ from __future__ import division
 from __future__ import print_function
 from __future__ import unicode_literals  # compatible with python3 unicode coding
 
-from  tf_visgen.base.model.base_config import BaseConfig
+from  visual_caption.base.model.base_config import BaseConfig
 
 
 class TextGenConfig(BaseConfig):
@@ -13,5 +13,8 @@ class TextGenConfig(BaseConfig):
         self.hidden_layer_num = 2
         self.hidden_neural_num = 512
         self.train_embeddings = False
+        self.vocab_size=4350
+        self.embedding_size=300
+        self._input_phrases=0
 
     pass

@@ -1,54 +1,34 @@
 import codecs
-import collections
-import os
 
 import numpy as np
-from six.moves import cPickle
-
-from tf_visgen.text_gen.data.text_gen_data_config import TextGenDataConfig
+import os
+from gensim.models import Word2Vec
 
 
 class TextLoader():
-    def __init__(self, data_dir, batch_size, seq_length, encoding='utf-8'):
+    def __init__(self,word2vec_model, data_dir, batch_size, seq_length, encoding='utf-8'):
+        self.word2vec_model=word2vec_model
         self.data_dir = data_dir
         self.batch_size = batch_size
         self.seq_length = seq_length
         self.encoding = encoding
 
         input_file = os.path.join(data_dir, "input.txt")
-        vocab_file = os.path.join(data_dir, "vocab.pkl")
-        tensor_file = os.path.join(data_dir, "data.npy")
+        self.preprocess(input_file)
 
-        if not (os.path.exists(vocab_file) and os.path.exists(tensor_file)):
-            print("reading text file")
-            self.preprocess(input_file, vocab_file, tensor_file)
-        else:
-            print("loading preprocessed files")
-            self.load_preprocessed(vocab_file, tensor_file)
         self.create_batches()
         self.reset_batch_pointer()
 
-    def preprocess(self, input_file, vocab_file, tensor_file):
-        with codecs.open(input_file, "r", encoding=self.encoding) as f:
-            data = f.read()
-        counter = collections.Counter(data)
-        count_pairs = sorted(counter.items(), key=lambda x: -x[1])
-        self.chars, _ = zip(*count_pairs)
-        self.vocab_size = len(self.chars)
-        self.vocab = dict(zip(self.chars, range(len(self.chars))))
-        with open(vocab_file, 'wb') as f:
-            cPickle.dump(self.chars, f)
-        self.tensor = np.array(list(map(self.vocab.get, data)))
-        np.save(tensor_file, self.tensor)
-
-    def load_preprocessed(self, vocab_file, tensor_file):
-        with open(vocab_file, 'rb') as f:
-            self.chars = cPickle.load(f)
-        self.vocab_size = len(self.chars)
-        self.vocab = dict(zip(self.chars, range(len(self.chars))))
-        self.tensor = np.load(tensor_file)
-        self.num_batches = int(self.tensor.size / (self.batch_size *
-                                                   self.seq_length))
+    def preprocess(self, input_file):
+        with codecs.open(input_file, "r", encoding="utf-8") as f:
+            lines = f.readlines()
+        word2index, index2word = self.get_vocb_dict(self.word2vec_model)
+        datas = []
+        for line in lines:
+            words = line.split()
+            for word in words:
+                datas.append(word2index[word])
+        self.tensor = np.array(datas)
 
     def create_batches(self):
         self.num_batches = int(self.tensor.size / (self.batch_size *
@@ -77,14 +57,24 @@ class TextLoader():
     def reset_batch_pointer(self):
         self.pointer = 0
 
+    def get_vocb_dict(self, model_path):
+        model = Word2Vec().wv.load_word2vec_format(model_path, binary=False)
+        vocabulary_word2index = {}
+        vocabulary_index2word = {}
+        special_index = 1
+        for i, vocab in enumerate(model.index2word):
+            vocabulary_word2index[vocab] = i
+            vocabulary_index2word[i] = vocab
+        return vocabulary_word2index, vocabulary_index2word
 
 if __name__ == '__main__':
 
-    data_config = TextGenDataConfig(model_name="TextGeneration")
+
     batch_size = 20
     seq_length = 100
     data_dir = "/home/liuxiaoming/data/tf-visgen/TextGeneration/data"
-    loader = TextLoader(data_dir=data_dir, batch_size=batch_size, seq_length=seq_length, encoding="utf-8")
+    word2vec_model="word2vec/model100"
+    loader = TextLoader(word2vec_model=word2vec_model,data_dir=data_dir, batch_size=batch_size, seq_length=seq_length, encoding="utf-8")
     batch = loader.next_batch()
     while batch:
         print("batch_x={}, batch_y=".format(batch[0],batch[1]))

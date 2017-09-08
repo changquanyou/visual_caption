@@ -6,7 +6,7 @@ from __future__ import unicode_literals  # compatible with python3 unicode codin
 
 import tensorflow as tf
 
-from tf_visgen.base.model.base_model import BaseModel
+from visual_caption.base.model.base_model import BaseModel
 
 
 class TextGenerateModel(BaseModel):
@@ -34,13 +34,15 @@ class TextGenerateModel(BaseModel):
     def _build_embeddings(self):
         print("......building embeddings begin......")
         embedding_matrix = self._data_loader.token_embedding_matrix
-        with tf.device("/cpu:0"):
-            self._embeddings = tf.placeholder(tf.float32, shape=embedding_matrix.shape)
-            self._inputs = tf.nn.embedding_lookup(self._embeddings, self._input_sequence)
-            with tf.Session() as sess:
-                init = tf.global_variables_initializer()
-                sess.run(init, feed_dict={self._embeddings: embedding_matrix})
-            print("embeddings={}".format(self._embeddings))
+        with tf.variable_scope("seq_embedding"),tf.device("/cpu:0"):
+            self._embeddings = tf.placeholder( dtype=tf.float32,
+                                               shape=embedding_matrix.shape,
+                                               name="_embeddings"
+                                               )
+            self._inputs = tf.nn.embedding_lookup(self._embeddings, self._input_sequence,
+                                                  name = "input_sequence_embeddings"
+                                                  )
+
 
         print("......building embeddings end......")
 
@@ -91,3 +93,6 @@ class TextGenerateModel(BaseModel):
         with tf.name_scope("loss"):
             self.loss = tf.nn.sparse_softmax_cross_entropy_with_logits(logits=self.logits, labels=self.flat_targets)
             self._cost = tf.reduce_mean(self.loss)
+
+
+

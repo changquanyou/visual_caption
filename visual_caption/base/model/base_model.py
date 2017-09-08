@@ -63,7 +63,7 @@ class BaseModel(object):
         raise NotImplementedError()
 
     @abstractmethod
-    def _build_feed_and_fetch(self):
+    def _build_feed_and_fetch(self,):
         # define default feed_dict and fetches for run_epoch
         raise NotImplementedError()
 
@@ -115,7 +115,10 @@ class BaseModel(object):
             start = time.time()
             global_step = tf.train.global_step(sess, self._global_step)
 
+
             feed_dict, fetches = self._get_feed_and_fetch(batch_data=batch_data)
+
+
 
             _, batch_loss, batch_summary = sess.run(fetches, feed_dict)
 
@@ -134,6 +137,13 @@ class BaseModel(object):
                     #     print("")
 
         return global_step, batch_loss
+    def _get_feed_and_fetch(self,batch_data):
+        (x,y)=batch_data
+        embedding_matrix=self._data_loader.token_embedding_matrix
+
+        feed_dict={self._embeddings: embedding_matrix,self._input_sequence:x,self._target_sequence:y,}
+        fetches=[self._optimizer,self._cost,self._merged]
+        return feed_dict,fetches
 
     def _save_model(self, sess, global_step):
         model_name = self.config.model_name
@@ -165,6 +175,8 @@ class BaseModel(object):
         logger.setLevel(logging.DEBUG)
         logging.basicConfig(format="%(message)s", level=logging.DEBUG)
         self.logger = logger
+
+
 
     def run_train(self):
         with tf.Session(config=self.config.sess_config) as sess:
