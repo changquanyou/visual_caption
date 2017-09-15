@@ -18,7 +18,7 @@ dropout_keep_prob = 0.5
 initializer_scale = 0.08
 early_stopping = 100
 #base_dir = "/home/liuxiaoming/data/visual_caption/"
-base_dir = "C:/Users/tsf/Desktop/gitdata/data/"
+base_dir = "/home/liuxiaoming/data/visual_caption/"
 
 
 class BaseConfig(object):

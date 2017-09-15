@@ -7,13 +7,13 @@ from __future__ import unicode_literals  # compatible with python3 unicode codin
 import os
 
 BATCH_SIZE = 10  # default batch size
-#BASE_DATA_DIR = "/home/liuxiaoming/data/"
-BASE_DATA_DIR = "C:/Users/tsf/Desktop/gitdata/data/"
-MODULE_NAME = "tf-visgen"  # default model name
+BASE_DATA_DIR = "/home/liuxiaoming/data/"
+# BASE_DATA_DIR = "C:/Users/tsf/Desktop/gitdata/data/"
+MODULE_NAME = "ai_challenge"  # default model name
 
 
 class BaseDataConfig(object):
-    def __init__(self, model_name):
+    def __init__(self, model_name=MODULE_NAME):
         self.base_data_dir = BASE_DATA_DIR
         self.batch_size = BATCH_SIZE
 

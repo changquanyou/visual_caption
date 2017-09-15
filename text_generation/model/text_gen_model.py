@@ -34,15 +34,13 @@ class TextGenerateModel(BaseModel):
     def _build_embeddings(self):
         print("......building embeddings begin......")
         embedding_matrix = self._data_loader.token_embedding_matrix
-        with tf.variable_scope("seq_embedding"),tf.device("/cpu:0"):
-            self._embeddings = tf.placeholder( dtype=tf.float32,
-                                               shape=embedding_matrix.shape,
-                                               name="_embeddings"
-                                               )
+        with tf.variable_scope("seq_embedding"), tf.device("/cpu:0"):
+            self._embeddings = tf.placeholder(dtype=tf.float32,
+                                              shape=embedding_matrix.shape,
+                                              name="_embeddings"
+                                              )
             self._inputs = tf.nn.embedding_lookup(self._embeddings, self._input_sequence,
-                                                  name = "input_sequence_embeddings"
-                                                  )
-
+                                                  name="input_sequence_embeddings")
 
         print("......building embeddings end......")
 
@@ -68,31 +66,43 @@ class TextGenerateModel(BaseModel):
             sequence_lengths = tf.reduce_sum(tf.sign(self._input_sequence + 1), 1)
 
             self._sequence_lengths = sequence_lengths
-            (output_fw, output_bw), final_state = tf.nn.bidirectional_dynamic_rnn(
+            outputs, output_states = tf.nn.bidirectional_dynamic_rnn(
                 cell_fw=cell_fw, cell_bw=cell_bw, inputs=self._inputs,
                 sequence_length=sequence_lengths,
                 # initial_state_fw=initial_state_fw,
                 # initial_state_bw=initial_state_bw,
                 dtype=data_type
             )
-        with tf.name_scope("flatten_outputs"):
-            self.flat_outputs = tf.reshape(tf.concat(values=[output_fw, output_bw], axis=1),
-                                           shape=[-1, hidden_neural_num])
+        # outputs is a length T list of output vectors, which is [batch_size, 2 * hidden_size]
+        # [time][batch][cell_fw.output_size + cell_bw.output_size]
 
-        with tf.name_scope("flatten_targets"):
-            self.flat_targets = tf.reshape(tf.concat(values=self._target_sequence, axis=1), shape=[-1])  #
-
-        with tf.variable_scope("softmax"):
-            vocab_size = self._data_loader.vocab_size
-            softmax_w = tf.get_variable("softmax_w", shape=[hidden_neural_num, vocab_size])
-            softmax_b = tf.get_variable("softmax_b", shape=[vocab_size])
-            self.logits = tf.matmul(self.flat_outputs, softmax_w) + softmax_b
-            self.probs = tf.nn.softmax(self.logits)
+        self._outputs = tf.reshape(tf.concat(outputs, 1), [-1, hidden_size * 2])
+        # output has size: [T, size * 2]
+        print("......building networks finished......")
 
     def _build_loss(self):
-        with tf.name_scope("loss"):
-            self.loss = tf.nn.sparse_softmax_cross_entropy_with_logits(logits=self.logits, labels=self.flat_targets)
-            self._cost = tf.reduce_mean(self.loss)
+        print("......building loss......")
+        # Compute logits and weights
+        hidden_size = self.config.hidden_neural_num
+        vocab_size = self._data_loader.vocab_size
+        data_type = self.config.data_type
+        batch_size = self.config.batch_size
 
+        with tf.variable_scope('softmax'):
+            softmax_w = tf.get_variable("softmax_w", [hidden_size * 2, vocab_size], dtype=data_type)
+            softmax_b = tf.get_variable("softmax_b", [vocab_size], dtype=data_type)
 
+        with tf.variable_scope("logits"):
+            logits = tf.matmul(self._outputs, softmax_w) + softmax_b  # logits shape[time_step, target_num]
 
+        # Computing losses.
+        with tf.variable_scope("loss"):
+            # adding extra statistics to monitor
+            targets = self._target_seqs
+            correct_prediction = tf.equal(tf.cast(tf.argmax(logits, 1), tf.int32), tf.reshape(targets, [-1]))
+            self._accuracy = tf.reduce_mean(tf.cast(correct_prediction, "float"))
+            loss = tf.nn.sparse_softmax_cross_entropy_with_logits(labels=tf.reshape(targets, [-1]), logits=logits)
+            self._cost = tf.reduce_mean(loss)  # loss
+            tf.summary.scalar("accuracy", self._accuracy)
+            tf.summary.scalar("loss", self._cost)
+        print("......building loss finished......")
