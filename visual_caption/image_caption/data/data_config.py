@@ -34,4 +34,5 @@ class ImageCaptionDataConfig(BaseDataConfig):
         word2vec_file_name = "word2vec_" + str(self.dim_size) + ".model"
         self.word2vec_model = os.path.join(self.embedding_dir, word2vec_file_name)
 
+        self.seq_max_length = 100
     pass
