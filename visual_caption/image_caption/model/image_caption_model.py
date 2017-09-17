@@ -23,7 +23,10 @@ class ImageCaptionModel(BaseModel):
                                       shape=[self.config.batch_size],
                                       name="targets")
 
-    def _build_CNN(self):
+    def _build_Image_Network(self):
+
+
+
         pass
 
     def _build_RNN(self):

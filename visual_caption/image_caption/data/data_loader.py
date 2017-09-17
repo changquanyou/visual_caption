@@ -33,7 +33,7 @@ class ImageCaptionDataLoader(BaseDataLoader):
         """
         w2v_model = Word2Vec.load(self.data_config.char2vec_model)
         self.vocab = w2v_model.wv.vocab
-        vocab_size = len(w2v_model.wv.index2word)  # initial vocab_size
+        vocab_size = len(self.vocab)  # initial vocab_size
 
         self.embedding_dim = w2v_model.vector_size
 

@@ -9,10 +9,11 @@ import os
 import ijson
 from gensim.models.word2vec import LineSentence, Word2Vec
 
+from visual_caption.base.data.base_data_prepare import BaseDataPrepare
 from visual_caption.image_caption.data.data_config import ImageCaptionDataConfig
 
 
-class DataPrepare(object):
+class DataPrepare(BaseDataPrepare):
     """
     Prepare caption txt and token2vec model
     """
