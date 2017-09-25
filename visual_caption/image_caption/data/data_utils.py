@@ -35,12 +35,12 @@ def pad_sequences(sequences, pad_token, max_length):
     return sequence_padded_list, sequence_length_list
 
 
-def convert_id_seqs(captions, char2id):
-    result = [convert_id_seq(caption=caption, char2id=char2id) for caption in captions]
+def convert_id_seqs(captions, token2id_dict):
+    result = [convert_id_seq(caption=caption, token2id_dict=token2id_dict) for caption in captions]
     return result
 
 
-def convert_id_seq(caption, char2id):
+def convert_id_seq(caption, token2id_dict):
     """
     convert chars in caption into id
     :param caption:
@@ -50,12 +50,12 @@ def convert_id_seq(caption, char2id):
     caption = caption.replace(' ','')
     caption = caption.replace('\n', '')
     chars = [char for char in caption]
-    chars.insert(0, "#BEGIN#")
-    chars.append("#END#")
+    chars.insert(0, "<S>")
+    chars.append("<\S>")
     result = []
     for idx, char in enumerate(chars):
-        if char not in char2id:
+        if char not in token2id_dict:
             char = "#UNKNOWN#"
-        id = char2id[char]
+        id = token2id_dict[char]
         result.append(id)
     return result
