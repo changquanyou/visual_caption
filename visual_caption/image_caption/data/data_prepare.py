@@ -42,7 +42,7 @@ class ImageCaptionDataPrepare(BaseDataPrepare):
 
     def __init__(self):
         self.data_config = ImageCaptionDataConfig()
-        self.load_embeddings(self.data_config.embedding_dim_size)
+        # self.load_embeddings(self.data_config.embedding_dim_size)
         self.image_decoder = ImageDecoder()
 
     def build_char_all(self):
@@ -57,25 +57,33 @@ class ImageCaptionDataPrepare(BaseDataPrepare):
         print("end char txt  generation")
 
     def build_char_text(self, json_data_file):
+        """
+        build sentence file for embeddings
+
+        example:    <S> 这 是 一 个 例 子 </S>
+        :param json_data_file:
+        :return:
+        """
         print("begin char txt generation for {}".format(json_data_file))
         raw_data_gen = self.rawdata_generator(json_data_file=json_data_file)
         with open(file=self.data_config.caption_char_txt, mode='a', encoding='utf-8') as f_txt:
             for batch, batch_data in enumerate(raw_data_gen):
-                for raw_data in enumerate(batch_data):
-                    (id, caption_dict) = raw_data
+                for raw_data in batch_data:
                     captions = raw_data['captions']
                     for caption in captions:
                         if len(str.strip(caption)) > 0:
-                            line = [char + ' ' for char in caption]  # separate each token with a whitespace ' '
-                            line[len(line) - 1] = '\n'  # replace the last token with '\n'
+                            line = [char + ' ' for char in caption]  # separate each token with a whitespace
+                            line.insert(0, self.data_config.begin_token + " ")
+                            line.append(self.data_config.end_token)
+                            line.append('\n')
                             f_txt.writelines(line)
-                    if id % 10000 == 0:
-                        print("Generating caption char txt for id={}".format(id))
+                if batch % 1000 == 0:
+                    print("Generating caption char txt for batch={}".format(batch * 1000))
             print("end char txt generation for {}".format(json_data_file))
 
         pass
 
-    def rawdata_generator(self, json_data_file, batch_size):
+    def rawdata_generator(self, json_data_file):
         """
         load json file and yield data in batch
         :param json_data_file:
@@ -83,6 +91,7 @@ class ImageCaptionDataPrepare(BaseDataPrepare):
         :return:
         """
         batch_data = []
+        count = 0;
         with open(json_data_file, mode='r', encoding='utf-8') as f_json:
             item_gen = ijson.items(f_json, "item")
             for item in enumerate(item_gen):
@@ -95,14 +104,17 @@ class ImageCaptionDataPrepare(BaseDataPrepare):
                     caption_txt = str.strip(caption_txt)
                     caption_txt = caption_txt.replace(' ', '')
                     caption_txt = caption_txt.replace('\n', '')
-                    caption_txt = self.data_config
                     caption_list.append(caption_txt)
                 caption_data = {'id': id, 'url': url, 'image_id': image_id, 'captions': caption_list}
                 batch_data.append(caption_data)
-                if len(batch_data) == batch_size:
+                if len(batch_data) == self.data_config.batch_size:
                     yield batch_data
                     batch_data = []
-                    print("Generating caption char txt for id={}".format(id))
+
+                count += 1
+                if count % 1000 == 0:
+                    print("load {} image data instances".format(count))
+
             if len(batch_data) > 0:
                 yield batch_data
                 del batch_data
@@ -121,7 +133,7 @@ class ImageCaptionDataPrepare(BaseDataPrepare):
     def generate_word_file(self):
         pass
 
-    def load_embeddings(self, dim_size):
+    def load_embeddings(self):
         """
         load char2vec or word2vec model for token embeddings
         :return:
@@ -139,7 +151,7 @@ class ImageCaptionDataPrepare(BaseDataPrepare):
             self.index2token[idx] = token
             self.token2index[token] = idx
             self.token_embedding_matrix[idx] = token_embedding
-        self.token2index[self.data_config.unknown_token] = len(self.vocab)
+        self.token2index[self.data_config.unknown_token] = len(self.vocab)  # for unknown token
         pass
 
     def build_tf_data(self, mode):
@@ -150,18 +162,15 @@ class ImageCaptionDataPrepare(BaseDataPrepare):
 
         if mode == 'train':
             image_dir = self.data_config.train_image_dir
-            caption_gen = self.rawdata_generator(self.data_config.train_json_data,
-                                                 batch_size=self.data_config.batch_size)
+            caption_gen = self.rawdata_generator(self.data_config.train_json_data)
             output_file = self.data_config.train_tf_data_file
         elif mode == 'test':
             image_dir = self.data_config.test_image_dir
-            caption_gen = self.rawdata_generator(self.data_config.test_json_data,
-                                                 batch_size=self.data_config.batch_size)
+            caption_gen = self.rawdata_generator(self.data_config.test_json_data)
             output_file = self.data_config.test_tf_data_file
         elif mode == 'validation':
             image_dir = self.data_config.validation_image_dir
-            caption_gen = self.rawdata_generator(self.data_config.validation_json_data,
-                                                 batch_size=self.data_config.batch_size)
+            caption_gen = self.rawdata_generator(self.data_config.validation_json_data)
             output_file = self.data_config.validation_tf_data_file
 
         writer = tf.python_io.TFRecordWriter(output_file)
@@ -172,11 +181,22 @@ class ImageCaptionDataPrepare(BaseDataPrepare):
                 for sequence_example in sequence_example_list:
                     if sequence_example is not None:
                         writer.write(sequence_example.SerializeToString())
-                sys.stdout.flush()
+            if batch % 100 == 0 and batch > 0:
+                print("flush batch {} dataset into file {}".format(batch, output_file))
+
+            sys.stdout.flush()
+            if batch % 1000 == 0 and batch > 0:
+                break
 
         writer.close()
+        sys.stdout.flush()
 
     def caption_to_ids(self, caption_txt):
+        """
+        not each token is not in token2index dict
+        :param caption_txt:
+        :return:
+        """
         ids = [self.token2index[token] for token in caption_txt]
         return ids
 
@@ -194,13 +214,14 @@ class ImageCaptionDataPrepare(BaseDataPrepare):
         except (tf.errors.InvalidArgumentError, AssertionError):
             print("Skipping file with invalid JPEG data: %s" % image_filename)
             return
+        # shape = encoded_image.shape
 
         url = caption_data['url']
         caption_list = caption_data['captions']
 
         context = tf.train.Features(feature={
             "image/image_id": self._bytes_feature(encoded_image_id),
-            "image/data": self._bytes_feature(encoded_image),
+            "image/rawdata": self._bytes_feature(encoded_image),
         })
 
         sequence_example_list = []
@@ -218,8 +239,17 @@ class ImageCaptionDataPrepare(BaseDataPrepare):
 
 
 if __name__ == '__main__':
-    data_config = ImageCaptionDataConfig()
     data_prepare = ImageCaptionDataPrepare()
+
+    # build sentence file for embeddings
+    # data_prepare.build_char_all()
+
+    # build embeddings models
+    # data_prepare.build_embeddings()
+
+    # load embeddings models
+    data_prepare.load_embeddings()
+
     modes = ['train', 'validation']
     for mode in modes:
         data_prepare.build_tf_data(mode=mode)

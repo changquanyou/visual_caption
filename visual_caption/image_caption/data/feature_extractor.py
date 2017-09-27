@@ -1,0 +1,8 @@
+
+
+
+class ImageFeatureExtractor(object):
+
+
+
+    pass

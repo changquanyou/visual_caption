@@ -4,13 +4,13 @@ from __future__ import division
 from __future__ import print_function
 from __future__ import unicode_literals  # compatible with python3 unicode coding
 
-import ijson
+import os
+
 import numpy as np
 import tensorflow as tf
 from gensim.models.word2vec import Word2Vec
 
 from visual_caption.base.data.base_data_loader import BaseDataLoader
-from visual_caption.image_caption.data import data_utils
 from visual_caption.image_caption.data.data_config import ImageCaptionDataConfig
 
 
@@ -18,82 +18,78 @@ from visual_caption.image_caption.data.data_config import ImageCaptionDataConfig
 
 class ImageCaptionDataLoader(BaseDataLoader):
     """
-        load token2vec model and data set for train, validation and test
+        load train, validation, test dataset with embedding model
 
     """
 
-    def __init__(self, data_config):
+    def __init__(self, data_config=ImageCaptionDataConfig()):
         super().__init__(data_config=data_config)
+        self.tf_reader = tf.TFRecordReader()
         self._load_embeddings()
 
     def _load_embeddings(self):
         """
-        load token2vec embeddings
+        load char2vec or word2vec model for token embeddings
         :return:
         """
-        w2v_model = Word2Vec.load(self.data_config.char2vec_model)
-        self.vocab = w2v_model.wv.vocab
-        vocab_size = len(self.vocab)  # initial vocab_size
+        if not os.path.isfile(self.data_config.char2vec_model):
+            self.build_embeddings()
 
-        self.embedding_dim = w2v_model.vector_size
-
-        self.token_embedding_matrix = np.zeros([vocab_size + 3, self.embedding_dim])
-
-        self.word2index = {}
-        self.index2word = {}
-        for idx, word in enumerate(w2v_model.wv.index2word):
-            word_embedding = w2v_model.wv[word]
-            self.index2word[idx] = word
-            self.word2index[word] = idx
-            self.token_embedding_matrix[idx] = word_embedding
-
-        self.index2word[vocab_size] = '#BEGIN#'
-        self.index2word[vocab_size + 1] = '#END#'
-        self.index2word[vocab_size + 2] = '#UNKNOWN#'
-
-        self.word2index['#BEGIN#'] = vocab_size
-        self.word2index['#END#'] = vocab_size + 1
-        self.word2index['#UNKNOWN#'] = vocab_size + 2
-
-        self.token_embedding_matrix[vocab_size] = np.zeros([self.embedding_dim])
-        self.token_embedding_matrix[vocab_size + 1] = np.ones([self.embedding_dim])
-        self.token_embedding_matrix[vocab_size + 2] = np.zeros([self.embedding_dim])-1
-
-        self.vocab_size = vocab_size + 2  # +1 for #BEGIN#; +2 for #END#
-
-    def _load_data(self, json_file, image_dir):
-        """
-        General data loading method
-        :param json_file:
-        :param image_dir:
-        :return:
-        """
-
-        batch_data = []
-        with open(json_file, mode='r', encoding='utf-8') as f:
-            item_gen = ijson.items(f, "item")
-            for item in enumerate(item_gen):
-                (id, caption_dict) = item
-                image_id = caption_dict['image_id']
-                url = caption_dict['url']
-                captions = caption_dict['caption']
-
-                id_seqs = data_utils.convert_id_seqs(captions=captions, char2id=self.word2index)
-                seqs, seq_lengths = data_utils.pad_sequences(id_seqs, 0, self.data_config.seq_max_length)
-
-                for idx, seq in enumerate(seqs):
-                    data = [id, image_id, url, seq, seq_lengths[idx]]
-                    batch_data.append(data)
-                    if len(batch_data) == self.data_config.batch_size:
-                        yield batch_data
-                        batch_data = []
-            if len(batch_data) > 0:
-                yield batch_data
-        del batch_data
+        self.token2vec = Word2Vec.load(self.data_config.char2vec_model)
+        self.vocab = self.token2vec.wv.vocab
+        self.token2index = {}
+        self.index2token = {}
+        self.token_embedding_matrix = np.zeros([len(self.vocab) + 1, self.data_config.embedding_dim_size])
+        for idx, token in enumerate(self.token2vec.wv.index2word):
+            token_embedding = self.token2vec.wv[token]
+            self.index2token[idx] = token
+            self.token2index[token] = idx
+            self.token_embedding_matrix[idx] = token_embedding
+        self.token2index[self.data_config.unknown_token] = len(self.vocab)  # for unknown token
+        pass
 
     def load_train_data(self):
-        return self._load_data(json_file=self.data_config.train_json_data,
-                               image_dir=self.data_config.train_image_dir)
+        """
+        load train data in batch and shuffe
+        :return:
+        """
+        file_pattern = os.path.join(self.data_config.train_data_dir, '*.tfrecords')
+        files = tf.train.match_filenames_once(file_pattern)
+        filename_queue = tf.train.string_input_producer(files, shuffle=True)
+        _, serialized_example = self.tf_reader.read(filename_queue)
+
+        context, sequence = tf.parse_single_sequence_example(
+            serialized_example,
+            context_features={
+                'image/image_id': tf.FixedLenFeature([], dtype=tf.string),
+                # 'image/height': tf.FixedLenSequenceFeature([], dtype=tf.int64),
+                # 'image/width': tf.FixedLenSequenceFeature([], dtype=tf.int64),
+                # 'image/channels': tf.FixedLenSequenceFeature([], dtype=tf.int64),
+                'image/rawdata': tf.FixedLenFeature([], dtype=tf.string)},
+            sequence_features={
+                'image/caption': tf.FixedLenSequenceFeature([], dtype=tf.string),
+                'image/caption_ids': tf.FixedLenSequenceFeature([], dtype=tf.int64)}
+        )
+        image_id = context['image/image_id']
+        # image_height = context['image/height']
+        # image_width = context['image/width']
+        # image_channels = context['image/channels']
+        image_rawdata = context['image/data']
+        decoded_image = tf.decode_raw(image_rawdata, tf.uint8)
+        # decoded_image = tf.reshape(decoded_image, [image_height, image_width, image_channels])
+
+        image_caption = sequence['image/caption']
+        image_caption_ids = sequence['image/caption_ids']
+
+        min_after_dequeue = 1000
+        capacity = min_after_dequeue + 3 * self.data_config.batch_size
+
+        image_batch, caption_batch = tf.train.shuffle_batch(
+            [image_id, decoded_image, image_caption, image_caption_ids],
+            batch_size=self.data_config.batch_size,
+            capacity=capacity, min_after_dequeue=min_after_dequeue
+        )
+        yield image_caption, caption_batch
 
     def load_test_data(self):
         return self._load_data(json_file=self.data_config.train_json_data)
@@ -106,9 +102,8 @@ class ImageCaptionDataLoader(BaseDataLoader):
 
 
 def main(_):
-    data_config = ImageCaptionDataConfig()
-    data_loader = ImageCaptionDataLoader(data_config=data_config)
-    data_gen = data_loader.load_validation_data()
+    data_loader = ImageCaptionDataLoader()
+    data_gen = data_loader.load_train_data()
     for batch, batch_data in enumerate(data_gen):
         print("batch={}".format(batch))
         for data in batch_data:

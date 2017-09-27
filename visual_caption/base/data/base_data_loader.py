@@ -34,5 +34,5 @@ class BaseDataLoader(object):
         raise NotImplementedError()
 
     @abstractmethod
-    def load_infer_data(self):
+    def load_validation_data(self):
         raise NotImplementedError()

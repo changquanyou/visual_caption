@@ -5,6 +5,14 @@ from __future__ import print_function
 from __future__ import unicode_literals  # compatible with python3 unicode coding
 
 
+class DataUitls():
+
+    def load_embeddings(self):
+        pass
+
+
+
+
 def _pad_sequences(sequences, pad_token, max_length):
     """
     args:
