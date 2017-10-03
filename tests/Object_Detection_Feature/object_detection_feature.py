@@ -13,6 +13,7 @@ import tensorflow as tf
 from PIL import Image
 from matplotlib import pyplot as plt
 
+os.environ["CUDA_VISIBLE_DEVICES"] = "1"
 
 # This is needed since the notebook is stored in the object_detection folder.
 sys.path.append("../../")
@@ -53,9 +54,7 @@ NUM_CLASSES = 90
 
 
 
-# ## Load a (frozen) Tensorflow model into memory.
-
-
+# Load a (frozen) Tensorflow model into memory.
 detection_graph = tf.Graph()
 with detection_graph.as_default():
   od_graph_def = tf.GraphDef()
@@ -75,8 +74,6 @@ category_index = label_map_util.create_category_index(categories)
 
 def load_image_into_numpy_array(image):
     (im_width, im_height) = image.size
-    print ('width: '+ str(im_width))
-    print ('heigth:'+ str(im_height))
     return np.array(image.getdata()).reshape(
       (im_height, im_width, 3)).astype(np.uint8)
 def iterbrowse(path):
@@ -93,9 +90,6 @@ for full_path in iterbrowse(PATH_TO_AI_CHALLENGE_TRAIN):
 print('train data size: '+ str(len(TRAIN_IMAGE_PATHS)))
 IMAGE_SIZE = (12, 8)
 
-
-# In[43]:
-
 with detection_graph.as_default():
   with tf.Session(graph=detection_graph) as sess:
     # Definite input and output Tensors for detection_graph
@@ -107,7 +101,8 @@ with detection_graph.as_default():
     detection_scores = detection_graph.get_tensor_by_name('detection_scores:0')
     detection_classes = detection_graph.get_tensor_by_name('detection_classes:0')
     num_detections = detection_graph.get_tensor_by_name('num_detections:0')
-    for image_path in  random.sample(TRAIN_IMAGE_PATHS,5):
+    result_list = []
+    for image_path in  TRAIN_IMAGE_PATHS:
       image = Image.open(image_path)
       # the array based representation of the image will be used later in order to prepare the
       # result image with boxes and labels on it.
@@ -121,20 +116,22 @@ with detection_graph.as_default():
       # gen img feature
       # img_id width heigth bottem_left upper_right
       img_id = get_img_id(image_path)
+      print ('processing for img id:'+img_id)
       (img_width,img_height) = image.size
       # confidence score > 0.5,will save the feature
       confidence_score_list = np.squeeze(scores)
       classes_list = np.squeeze(classes).astype(np.int32)
       boxes_list = np.squeeze(boxes)
-      result_list = []
       for index in range(0,len(confidence_score_list)):
           cofidence_score = confidence_score_list[index]
+          print (cofidence_score)
           if cofidence_score > 0.5:
               x_min= boxes_list[index][0] * img_width
               y_min= boxes_list[index][1] * img_height
               x_max= boxes_list[index][2] * img_width
               y_max= boxes_list[index][3] * img_height
               value = (img_id,
+                     cofidence_score,
                      img_width,
                      img_height,
                      category_index.get(classes_list[index]).get('name'),
@@ -144,7 +141,7 @@ with detection_graph.as_default():
                      y_max
                      )
               result_list.append(value)
-    column_name = ['filename', 'width', 'height', 'class', 'xmin', 'ymin', 'xmax', 'ymax']
+    column_name = ['filename','confidence', 'width', 'height', 'class', 'xmin', 'ymin', 'xmax', 'ymax']
     label_df = pd.DataFrame(result_list, columns=column_name)
-    label_df.to_csv('ai_challenge_labels.csv', index=None)
+    label_df.to_csv('/home/zutnlp/data/label_mapping/ai_challenge_labels.csv', index=None)
     print('Successfully converted img feature to csv.')
