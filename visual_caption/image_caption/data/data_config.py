@@ -14,6 +14,8 @@ UNKNOWN_TOKEN = "#UNKNOWN#"
 
 
 class ImageCaptionDataConfig(BaseDataConfig):
+    """Wrapper class for model hyperparameters."""
+
     def __init__(self):
         super().__init__()
 
@@ -57,5 +59,13 @@ class ImageCaptionDataConfig(BaseDataConfig):
         self.unknown_token = UNKNOWN_TOKEN
         self.begin_token = BEGIN_TOKEN
         self.end_token = END_TOKEN
+
+
+        # Name of the SequenceExample context feature containing image data.
+        self.image_feature_name = "image/data"
+
+        # Name of the SequenceExample feature list containing integer captions.
+        self.caption_feature_name = "image/caption_ids"
+
 
     pass
