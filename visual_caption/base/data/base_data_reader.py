@@ -9,30 +9,22 @@ from abc import ABCMeta, abstractmethod
 
 class BaseDataReader(object):
     """
-        Base Abstract Class for Data Reader of TFRecords
+    Base Abstract Data Reader Class of TFRecords
     """
     __metaclass__ = ABCMeta
 
     def __init__(self, data_config):
         self.data_config = data_config
 
-    def load_data_generator(self, mode):
-        if mode == "train":
-            data_generator = self.load_train_data()
-        elif mode == "test":
-            data_generator = self.load_test_data()
-        elif mode == "infer":
-            data_generator = self.load_infer_data()
-        return data_generator
+    def build_data_inputs(self):
+        if self.data_config.mode == "train":
+            self.data_inputs = self._build_data_inputs(data_dir=self.data_config.train_data_dir)
+        elif self.data_config.mode == "test":
+            self.data_inputs = self._build_data_inputs(data_dir=self.data_config.test_data_dir)
+        elif self.data_config.mode == "validation":
+            self.data_inputs = self._build_data_inputs(data_dir=self.data_config.validation_data_dir)
+        return self.data_inputs
 
     @abstractmethod
-    def load_train_data(self):
-        raise NotImplementedError()
-
-    @abstractmethod
-    def load_test_data(self):
-        raise NotImplementedError()
-
-    @abstractmethod
-    def load_validation_data(self):
+    def _build_data_inputs(self, data_dir):
         raise NotImplementedError()

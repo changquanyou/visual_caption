@@ -18,11 +18,11 @@ class BaseModel(object):
     """
     __metaclass__ = ABCMeta
 
-    def __init__(self, config, data_loader):
+    def __init__(self, config, data_reader):
 
         self.config = config
 
-        self._data_loader = data_loader
+        self._data_reader = data_reader
 
         self._global_step = tf.Variable(0, trainable=False, name="global_step")
 
@@ -39,17 +39,18 @@ class BaseModel(object):
     def _build_model(self):
         print("...building model...")
         self._get_logger()
-        self._build_placeholder()
+        self._build_inputs()
         self._build_network()
         self._build_loss()
         self._build_optimizer()
         self._build_train_op()
         self._build_summaries()
+        self._build_fetches()
         print("...building model finished...")
 
     @abstractmethod
-    def _build_placeholder(self):
-        # define placeholders and variables
+    def _build_inputs(self):
+        # define inputs variables
         raise NotImplementedError()
 
     @abstractmethod
@@ -63,8 +64,8 @@ class BaseModel(object):
         raise NotImplementedError()
 
     @abstractmethod
-    def _build_feed_and_fetch(self):
-        # define default feed_dict and fetches for run_epoch
+    def _build_fetches(self):
+        # define default fetches for run_epoch
         raise NotImplementedError()
 
     def _build_optimizer(self):
@@ -109,16 +110,35 @@ class BaseModel(object):
         :param num_epoch: number of epoch
         :return:
         """
-        data_generator = self._data_loader.load_data_generator(mode=mode)
+        # Create a coordinator and run all QueueRunner objects
+        coord = tf.train.Coordinator()
+        threads = tf.train.start_queue_runners(coord=coord)
+        try:
+            for batch_index in range(5):
+                start = time.time()
+                global_step = tf.train.global_step(sess, self._global_step)
 
-        for batch_order, batch_data in enumerate(data_generator):
+                _, batch_loss, batch_summary = sess.run(self._fetches)
+
+                self._summary_writer.add_summary(batch_summary, global_step=global_step)
+
+
+
+        except Exception as e:
+            print(e)
+            coord.request_stop(e)
+        finally:
+            coord.request_stop()  # Stop the threads
+            coord.join(threads)  # Wait for threads to stop
+
+
+
+        for batch_index in range(5):
             start = time.time()
+
             global_step = tf.train.global_step(sess, self._global_step)
 
-
-            feed_dict, fetches = self._build_feed_and_fetch(batch_data=batch_data)
-
-
+            # feed_dict, fetches = self._build_feed_and_fetch(batch_data=batch_data)
 
             _, batch_loss, batch_summary = sess.run(fetches, feed_dict)
 
@@ -137,7 +157,6 @@ class BaseModel(object):
                     #     print("")
 
         return global_step, batch_loss
-
 
     def _save_model(self, sess, global_step):
         model_name = self.config.model_name
@@ -169,8 +188,6 @@ class BaseModel(object):
         logger.setLevel(logging.DEBUG)
         logging.basicConfig(format="%(message)s", level=logging.DEBUG)
         self.logger = logger
-
-
 
     def run_train(self):
         with tf.Session(config=self.config.sess_config) as sess:

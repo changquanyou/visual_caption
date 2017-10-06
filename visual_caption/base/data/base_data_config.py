@@ -11,12 +11,14 @@ BASE_DATA_DIR = "/home/liuxiaoming/data/"
 # BASE_DATA_DIR = "C:/Users/tsf/Desktop/gitdata/data/"
 MODULE_NAME = "ai_challenge"  # default model name
 
+MODE = 'train'  # default mode, mode should be one of {'train','test','validation'}
+
 
 class BaseDataConfig(object):
-    def __init__(self, model_name=MODULE_NAME):
+    def __init__(self, mode=MODE, model_name=MODULE_NAME):
         self.base_data_dir = BASE_DATA_DIR
         self.batch_size = BATCH_SIZE
-
+        self.mode = mode
         self.model_name = model_name
         self.model_data_dir = os.path.join(self.base_data_dir,
                                            self.model_name)
