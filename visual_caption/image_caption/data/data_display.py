@@ -35,7 +35,7 @@ class DataDisplay(object):
 
 
 def main():
-    display = DataDisaplay()
+    display = DataDisplay()
     display.display_image()
 
 
