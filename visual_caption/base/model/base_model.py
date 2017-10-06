@@ -204,7 +204,7 @@ class BaseModel(object):
                 self.logger.info(
                     "epoch={},global_step={},epoch_loss={},valid_acc={}".format(epoch, global_step, epoch_loss,
                                                                                 valid_acc))
-                # 更新最优迭代步骤
+                # 更新并保存最优 epoch
                 if valid_acc > best_val_acc:
                     best_val_acc = valid_acc
                     best_val_epoch = epoch
@@ -221,3 +221,9 @@ class BaseModel(object):
     @abstractmethod
     def _run_test(self, sess, global_step):
         raise NotImplementedError()
+
+    def _run_validate(self,sess):
+
+
+
+        pass
