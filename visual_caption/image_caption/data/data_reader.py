@@ -5,12 +5,13 @@ from __future__ import print_function
 from __future__ import unicode_literals  # compatible with python3 unicode coding
 
 import os
+import numpy as np
 
 import tensorflow as tf
 
 from visual_caption.base.data.base_data_reader import BaseDataReader
 from visual_caption.image_caption.data.data_config import ImageCaptionDataConfig
-
+from gensim.models.word2vec import Word2Vec
 
 # Data Reader class for AI_Challenge_2017
 class ImageCaptionDataReader(BaseDataReader):
@@ -20,37 +21,45 @@ class ImageCaptionDataReader(BaseDataReader):
 
     def __init__(self, data_config=ImageCaptionDataConfig()):
         super().__init__(data_config=data_config)
+
         self.tf_reader = tf.TFRecordReader()
+
         self.context_features = {
             self.data_config.visual_image_id_name: tf.FixedLenFeature([], dtype=tf.string),
             self.data_config.visual_feature_name: tf.FixedLenFeature([], dtype=tf.string),
         }
+
         self.sequence_features = {
             self.data_config.caption_text_name: tf.FixedLenSequenceFeature([], dtype=tf.string),
             self.data_config.caption_ids_name: tf.FixedLenSequenceFeature([], dtype=tf.int64)
         }
 
-    def load_train_data(self):
+        self.load_embeddings()
+
+    def load_embeddings(self):
         """
-        load train data in batch and shuffe
+        load char2vec or word2vec model for token embeddings
         :return:
         """
-        file_pattern = os.path.join(self.data_config.train_data_dir, '*.tfrecords')
-        files = tf.train.match_filenames_once(file_pattern)
-        filename_queue = tf.train.string_input_producer(files, shuffle=True)
-        _, serialized_example = self.tf_reader.read(filename_queue)
+        self.token2vec = Word2Vec.load(self.data_config.char2vec_model)
+        self.vocab = self.token2vec.wv.vocab
+        self.token2index = {}
+        self.index2token = {}
+        self.token_embedding_matrix = np.zeros([len(self.vocab) + 1, self.data_config.embedding_dim_size])
+        for idx, token in enumerate(self.token2vec.wv.index2word):
+            token_embedding = self.token2vec.wv[token]
+            self.index2token[idx] = token
+            self.token2index[token] = idx
+            self.token_embedding_matrix[idx] = token_embedding
+        self.token2index[self.data_config.unknown_token] = len(self.vocab)  # for unknown token
+        pass
 
-    def load_test_data(self):
-        return self._load_data(json_file=self.data_config.train_json_data)
+    pass
 
-    def load_validation_data(self):
-        return self._load_data(json_file=self.data_config.validation_json_data,
-                               image_dir=self.data_config.validation_image_dir)
-
-    def batch_with_dynamic_pad(self, images_and_captions,
-                               batch_size,
-                               queue_capacity,
-                               add_summaries=True):
+    def _batch_with_dynamic_pad(self, images_and_captions,
+                                batch_size,
+                                queue_capacity,
+                                add_summaries=True):
         """Batches input images and captions.
 
         This function splits the caption into an input sequence and a target sequence,
@@ -127,7 +136,7 @@ class ImageCaptionDataReader(BaseDataReader):
 
         return images, input_seqs, target_seqs, mask
 
-    def parse_sequence_example(self, serialized_example):
+    def _parse_sequence_example(self, serialized_example):
         # parsing sequence example
         context, sequence = tf.parse_single_sequence_example(
             serialized_example,
@@ -147,15 +156,15 @@ class ImageCaptionDataReader(BaseDataReader):
 
         return image_feature, caption_ids
 
-    def prefetch_input_data(self, reader,
-                            data_dir,
-                            is_training,
-                            batch_size,
-                            values_per_shard,
-                            input_queue_capacity_factor=16,
-                            num_reader_threads=1,
-                            shard_queue_name="filename_queue",
-                            value_queue_name="input_queue"):
+    def _prefetch_input_data(self, reader,
+                             data_dir,
+                             is_training,
+                             batch_size,
+                             values_per_shard,
+                             input_queue_capacity_factor=16,
+                             num_reader_threads=1,
+                             shard_queue_name="filename_queue",
+                             value_queue_name="input_queue"):
         """Prefetches string values from disk into an input queue.
 
         In training the capacity of the queue is important because a larger queue
@@ -219,9 +228,9 @@ class ImageCaptionDataReader(BaseDataReader):
 
         return values_queue
 
-    def build_inputs(self, data_dir):
+    def _build_data_inputs(self, data_dir):
         # Prefetch serialized SequenceExample protos.
-        input_queue = self.prefetch_input_data(
+        input_queue = self._prefetch_input_data(
             reader=self.tf_reader,
             data_dir=data_dir,
             is_training=True,
@@ -234,46 +243,45 @@ class ImageCaptionDataReader(BaseDataReader):
         images_and_captions = []
         for thread_id in range(self.data_config.num_preprocess_threads):
             serialized_sequence_example = input_queue.dequeue()
-            image, caption = self.parse_sequence_example(serialized_sequence_example)
+            image, caption = self._parse_sequence_example(serialized_sequence_example)
             images_and_captions.append([image, caption])
 
         # Batch inputs.
         queue_capacity = (2 * self.data_config.num_preprocess_threads *
                           self.data_config.batch_size)
         images, input_seqs, target_seqs, input_mask = (
-            self.batch_with_dynamic_pad(images_and_captions,
-                                        batch_size=self.data_config.batch_size,
-                                        queue_capacity=queue_capacity))
+            self._batch_with_dynamic_pad(images_and_captions,
+                                         batch_size=self.data_config.batch_size,
+                                         queue_capacity=queue_capacity))
         return images, input_seqs, target_seqs, input_mask
-
-    def read_tfrecords(self):
-        inputs = self.build_inputs(data_dir=self.data_config.train_data_dir)
-        # Initialize all global and local variables
-        init_op = tf.group(tf.global_variables_initializer(), tf.local_variables_initializer())
-        with tf.Session() as sess:
-            sess.run(init_op)
-
-            # Create a coordinator and run all QueueRunner objects
-            coord = tf.train.Coordinator()
-            threads = tf.train.start_queue_runners(coord=coord)
-
-            try:
-                for batch_index in range(5):
-                    data_batch = sess.run([inputs])
-                    for idx, data in enumerate(data_batch):
-                        print("batch={}, data={}".format(batch_index, data))
-
-            except Exception as e:
-                print(e)
-                coord.request_stop(e)
-            finally:
-                coord.request_stop()  # Stop the threads
-                coord.join(threads)  # Wait for threads to stop
 
 
 def main(_):
+    """
+    example for data_reader
+    :return:
+    """
     data_reader = ImageCaptionDataReader()
-    data_reader.read_tfrecords()
+    inputs = data_reader.build_inputs(data_dir=data_reader.data_config.train_data_dir)
+    # Initialize all global and local variables
+    init_op = tf.group(tf.global_variables_initializer(), tf.local_variables_initializer())
+    with tf.Session() as sess:
+        sess.run(init_op)
+        # Create a coordinator and run all QueueRunner objects
+        coord = tf.train.Coordinator()
+        threads = tf.train.start_queue_runners(coord=coord)
+        try:
+            for batch_index in range(5):
+                data_batch = sess.run([inputs])
+                for idx, data in enumerate(data_batch):
+                    print("batch={}, data={}".format(batch_index, data))
+
+        except Exception as e:
+            print(e)
+            coord.request_stop(e)
+        finally:
+            coord.request_stop()  # Stop the threads
+            coord.join(threads)  # Wait for threads to stop
 
 
 if __name__ == '__main__':

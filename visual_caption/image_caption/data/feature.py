@@ -6,19 +6,18 @@ from __future__ import unicode_literals  # compatible with python3 unicode codin
 
 import os
 
-import numpy as np
 import tensorflow as tf
-from scipy.io import savemat
 from scipy.misc import imresize
 
-from visgen.data.data_config import VisualGenomeDataConfig
-from visgen.data.data_loader import VisualGenomeDataLoader
 from visgen.feature.vgg19 import Vgg19
 
 vgg_data_dir = "/home/liuxiaoming/data/vgg"
 
-class FeatureManager(object):
 
+class FeatureManager(object):
+    """
+     visual feature extractor
+    """
     def __init__(self, vgg_model_dir=vgg_data_dir, sess=None):
         vgg19_npy_file = os.path.join(vgg_model_dir, "vgg19.npy")
         self.vgg_model = Vgg19(vgg19_npy_file)
@@ -39,6 +38,12 @@ class FeatureManager(object):
         self.vgg_model.build(self.input_images)
 
     def get_vgg_feature(self, image_batch):
+        """
+        extract feature batch for given image raw data batch
+        :param image_batch: image raw data batch
+        :return:
+            visual feature batch
+        """
         image_rawdata_batch = []
         for img in image_batch:
             # print("img.shape={}".format(img.shape))
@@ -50,5 +55,3 @@ class FeatureManager(object):
         print("shape={}".format(fc7.shape))
         # result = np.asarray(fc7)
         return fc7
-
-

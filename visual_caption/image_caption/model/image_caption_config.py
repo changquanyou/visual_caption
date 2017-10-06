@@ -8,7 +8,10 @@ from visual_caption.base.model.base_config import BaseConfig
 
 
 class ImageCaptionConfig(BaseConfig):
-
     def __init__(self, model_name):
         super().__init__(model_name=model_name)
+        self.train_embeddings = False
+        self.hidden_layer_num = 2
+        self.hidden_neural_num=512
+
     pass
