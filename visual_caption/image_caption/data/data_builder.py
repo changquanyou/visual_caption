@@ -110,62 +110,64 @@ class ImageCaptionDataBuilder(BaseDataBuilder):
         """
         sequence_example_list = []
 
-        # for image batch
+        # get visual features for image batch
         image_batch = []
         for caption_data in batch_caption_data:
             image_id = caption_data['image_id']
             image_filename = os.path.join(image_dir, image_id)
             image_raw_data = self.data_utils.load_image_raw(image_filename)
             image_batch.append(image_raw_data)
-
         visual_features = self.feature_manager.get_vgg_feature(image_batch=image_batch)
 
-        for idx, caption_data in enumerate(batch_caption_data):
-            visual_feature = visual_features[idx]
-            example_list = self._to_sequence_example(
-                raw_image=image_batch[idx],
-                visual_feature=visual_feature,
-                caption_data=caption_data)
+        # get list of sequence examples for batch caption_data
+        for idx, caption_data in enumerate(batch_caption_data): # for each caption meta data
+            visual_feature = visual_features[idx] #
+
+            # get list of sequence examples for each caption_data
+            example_list = self._to_sequence_example(visual_feature=visual_feature,
+                                                     caption_data=caption_data)
             sequence_example_list.extend(example_list)
 
         return sequence_example_list
 
-    def _to_sequence_example(self, raw_image, visual_feature, caption_data):
-
+    def _to_sequence_example(self, visual_feature, caption_data):
+        """
+        convert caption meta data to tf sequence example
+        :param visual_feature:
+        :param caption_data:
+        :return:
+            list of tf sequence examples
+        """
         id = caption_data['id']  # instance id
-
         url = caption_data['url']
         encoded_url = url.encode()
 
+        # image_id is a string
         image_id = caption_data['image_id']
         encoded_image_id = image_id.encode()
-
-        (height, width, depth) = raw_image.shape
-
         context = tf.train.Features(feature={
-
-            "image/id": self._int64_feature(id),
-            "image/url": self._bytes_feature(encoded_url),
-            "image/image_id": self._bytes_feature(encoded_image_id),
-
-            # "image/height": self._int64_feature(height),
-            # "image/width": self._int64_feature(width),
-            # "image/depth": self._int64_feature(depth),
+            "visual/id": self._int64_feature(id),
+            "visual/url": self._bytes_feature(encoded_url),
+            "visual/image_id": self._bytes_feature(encoded_image_id),
             # "image/rawdata": self._bytes_feature(raw_image),
-
-            # convert  ndarray to bytes for visual feature such as vgg19_fc7
-            'image/visual_feature': self._bytes_feature(visual_feature.tobytes())
+            # convert  ndarray to bytes for visual feature, such as vgg19_fc7
+            self.data_config.visual_feature_name: self._bytes_feature(visual_feature.tobytes())
         })
 
+        # each image have multi caption texts
+        # Extract the captions. Each image_id is associated with multiple captions.
         captions = caption_data['captions']
         sequence_example_list = []
         for caption_txt in captions:  # for each caption text
+            # # encoded_caption_
             encoded_caption_txt = [token.encode() for token in caption_txt.split()]
+            # ids for each caption text
             caption_ids = self.caption_to_ids(caption_txt)
 
+            # feature list of each caption text and ids
             feature_lists = tf.train.FeatureLists(feature_list={
-                "image/caption": self._bytes_feature_list(encoded_caption_txt),
-                "image/caption_ids": self._int64_feature_list(caption_ids)
+                self.data_config.caption_text_name: self._bytes_feature_list(encoded_caption_txt),
+                self.data_config.caption_ids_name: self._int64_feature_list(caption_ids)
             })
 
             sequence_example = tf.train.SequenceExample(context=context, feature_lists=feature_lists)

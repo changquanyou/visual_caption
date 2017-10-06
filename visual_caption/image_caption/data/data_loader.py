@@ -21,7 +21,7 @@ import tensorflow as tf
 class ImageCaptionDataLoader(BaseDataLoader):
     """
 
-    Data loader for raw data and prepare data for preprocessing
+    Data loader of raw data and prepare data for preprocessing
 
     Data Preprocessing:
 
@@ -40,7 +40,7 @@ class ImageCaptionDataLoader(BaseDataLoader):
         :return:
         """
         batch_data = []
-        count = 0;
+        # count = 0;
         with open(json_data_file, mode='rb') as f_json:
             item_gen = ijson.items(f_json, "item")
             for item in enumerate(item_gen):
@@ -68,9 +68,9 @@ class ImageCaptionDataLoader(BaseDataLoader):
                     yield batch_data
                     batch_data = []
 
-                count += 1
-                if count % 1000 == 0:
-                    print("load {} image data instances".format(count))
+                # count += 1
+                # if count % 1000 == 0:
+                #     print("load {} image data instances".format(count))
 
             if len(batch_data) > 0:
                 yield batch_data

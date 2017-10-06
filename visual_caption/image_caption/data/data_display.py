@@ -10,7 +10,10 @@ import skimage.io as io
 from visual_caption.image_caption.data.data_loader import ImageCaptionDataLoader
 
 
-class DataDisaplay():
+class DataDisplay(object):
+    """
+    display data
+    """
     def __init__(self):
         self.data_loader = ImageCaptionDataLoader()
         pass

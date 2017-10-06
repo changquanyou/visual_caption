@@ -9,8 +9,8 @@ import os
 from visual_caption.base.data.base_data_config import BaseDataConfig
 
 BEGIN_TOKEN = "<S>"
-END_TOKEN = "<S>"
-UNKNOWN_TOKEN = "#UNKNOWN#"
+END_TOKEN = "</S>"
+UNKNOWN_TOKEN = "<UNKNOWN>"
 
 
 class ImageCaptionDataConfig(BaseDataConfig):
@@ -60,12 +60,33 @@ class ImageCaptionDataConfig(BaseDataConfig):
         self.begin_token = BEGIN_TOKEN
         self.end_token = END_TOKEN
 
+        # for tfrecord format data
 
         # Name of the SequenceExample context feature containing image data.
-        self.image_feature_name = "image/data"
-
+        self.visual_feature_name = "visual/feature"
+        # Name of the SequenceExample context feature containing image data.
+        self.visual_image_id_name = "visual/image_id"
         # Name of the SequenceExample feature list containing integer captions.
-        self.caption_feature_name = "image/caption_ids"
+        self.caption_text_name = "caption/text"
+        # Name of the SequenceExample feature list containing integer captions.
+        self.caption_ids_name = "caption/ids"
+        # Name of the SequenceExample feature list containing integer captions.
+        self.caption_target_ids__name = "caption/target_ids"
+
+        """Sets the default model hyperparameters."""
+        # File pattern of sharded TFRecord file containing SequenceExample protos.
+        # Must be provided in training and evaluation modes.
+        self.input_file_pattern = None
+        # Approximate number of values per input shard. Used to ensure sufficient
+        # mixing between shards in training.
+        self.values_per_input_shard = 2300
+        # Minimum number of shards to keep in the input queue.
+        self.input_queue_capacity_factor = 2
+        # Number of threads for prefetching SequenceExample protos.
+        self.num_input_reader_threads = 1
+        # Number of threads for image preprocessing. Should be a multiple of 2.
+        self.num_preprocess_threads = 4
+
 
 
     pass
