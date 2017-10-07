@@ -8,15 +8,23 @@ import os
 
 import tensorflow as tf
 
-BATCH_SIZE = None
+# BATCH_SIZE = None
 max_grad_norm = 5
 max_max_epoch = 100
-learning_rate = 1e-4
-decay_steps = 1000
-decay_rate = 0.96
+
+
+
+# Learning rate for the initial phase of training.
+learning_initial_rate = 2.0
+learning_rate_decay_factor = 0.5
+learning_num_epochs_per_decay = 8.0
+
+
 dropout_keep_prob = 0.5
 initializer_scale = 0.08
 early_stopping = 100
+
+
 #base_dir = "/home/liuxiaoming/data/visual_caption/"
 base_dir = "/home/liuxiaoming/data/visual_caption/"
 
@@ -27,12 +35,16 @@ class BaseConfig(object):
         self.model_name = model_name
 
         self.dropout_keep_prob = dropout_keep_prob
-        self.learning_rate = learning_rate
-        self.decay_steps = decay_steps
-        self.decay_rate = decay_rate
+
+        self.learning_initial_rate = learning_initial_rate
+        self.learning_rate_decay_factor = learning_rate_decay_factor
+        self.learning_num_epochs_per_decay = learning_num_epochs_per_decay
+
+        # If not None, clip gradients to this value.
+        self.clip_gradients = 5.0
 
         self.initializer_scale = initializer_scale
-        self.batch_size = BATCH_SIZE
+        # self.batch_size = BATCH_SIZE
         self.data_type = tf.float32
 
         self.early_stopping = early_stopping

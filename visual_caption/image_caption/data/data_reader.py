@@ -43,6 +43,7 @@ class ImageCaptionDataReader(BaseDataReader):
         """
         self.token2vec = Word2Vec.load(self.data_config.char2vec_model)
         self.vocab = self.token2vec.wv.vocab
+
         self.token2index = {}
         self.index2token = {}
         self.token_embedding_matrix = np.zeros([len(self.vocab) + 1, self.data_config.embedding_dim_size])
@@ -51,7 +52,11 @@ class ImageCaptionDataReader(BaseDataReader):
             self.index2token[idx] = token
             self.token2index[token] = idx
             self.token_embedding_matrix[idx] = token_embedding
-        self.token2index[self.data_config.unknown_token] = len(self.vocab)  # for unknown token
+
+        # for unknown token
+        self.token2index[self.data_config.unknown_token] = len(self.vocab)
+        self.vocab_size = len(self.token2index)
+
         pass
 
     pass
@@ -262,7 +267,7 @@ def main(_):
     :return:
     """
     data_reader = ImageCaptionDataReader()
-    inputs = data_reader.build_inputs(data_dir=data_reader.data_config.train_data_dir)
+    inputs = data_reader._build_data_inputs(data_dir=data_reader.data_config.train_data_dir)
     # Initialize all global and local variables
     init_op = tf.group(tf.global_variables_initializer(), tf.local_variables_initializer())
     with tf.Session() as sess:

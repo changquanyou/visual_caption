@@ -12,6 +12,7 @@ from visual_caption.base.model.base_model import BaseModel
 class ImageCaptionModel(BaseModel):
     def __init__(self, config, data_reader):
         super().__init__(config=config, data_reader=data_reader)
+        self.batch_size = self._data_reader.data_config.batch_size
 
     def _build_inputs(self):
         print("......building inputs begin......")
@@ -29,12 +30,12 @@ class ImageCaptionModel(BaseModel):
         self.input_seq_embeddings = tf.nn.embedding_lookup(params=self._embeddings,
                                                            ids=self.input_seqs,
                                                            name="input_seqs_embeddings")
-        self.target_seq_embeddings = tf.nn.embedding_lookup(params=self._embeddings,
-                                                            ids=self.target_seqs,
-                                                            name="target_seqs_embeddings")
+        # self.target_seq_embeddings = tf.nn.embedding_lookup(params=self._embeddings,
+        #                                                     ids=self.target_seqs,
+        #                                                     name="target_seqs_embeddings")
         self._input_mask = self.input_mask
 
-        self.inputs = (self.input_images, self.input_image_embeddings, self.target_seq_embeddings, self.input_mask)
+        self._inputs = (self.input_image_embeddings, self.input_seq_embeddings, self.target_seqs, self.input_mask)
 
         print("......building inputs end......")
 
@@ -44,7 +45,7 @@ class ImageCaptionModel(BaseModel):
         return cell
 
     def _build_network(self):
-        print("......building deep network begin......")
+        print("......building network begin......")
 
         layer_num = self.config.hidden_layer_num
         data_type = self.config.data_type
@@ -70,18 +71,19 @@ class ImageCaptionModel(BaseModel):
         # [time][batch][cell_fw.output_size + cell_bw.output_size]
         self._outputs = tf.reshape(tf.concat(outputs, 1), [-1, hidden_neural_num * 2])
         # output has size: [T, size * 2]
-        print("......building networks finished......")
+        print("......building network end......")
 
     def _build_fetches(self):
-        self.fetches = [self._train_op, self._cost, self._merged]
+        print("......building fetches begin......")
+        self._fetches = [self._train_op, self._cost, self._merged]
+        print("......building fetches end......")
 
     def _build_loss(self):
-        print("......building loss......")
+        print("......building loss begin......")
         # Compute logits and weights
         hidden_size = self.config.hidden_neural_num
         vocab_size = self._data_reader.vocab_size
         data_type = self.config.data_type
-        batch_size = self.config.batch_size
 
         with tf.variable_scope('softmax'):
             softmax_w = tf.get_variable("softmax_w", [hidden_size * 2, vocab_size], dtype=data_type)
@@ -93,12 +95,12 @@ class ImageCaptionModel(BaseModel):
         # Computing losses.
         with tf.variable_scope("loss"):
             # adding extra statistics to monitor
-            targets = self.target_seq_embeddings
-            correct_prediction = tf.equal(tf.cast(tf.argmax(logits, 1), tf.int32), tf.reshape(targets, [-1]))
+            targets = self.target_seqs
+            correct_prediction = tf.equal(tf.cast(tf.argmax(logits, 1), tf.int64), tf.reshape(targets, [-1]))
             self._accuracy = tf.reduce_mean(tf.cast(correct_prediction, "float"))
             loss = tf.nn.sparse_softmax_cross_entropy_with_logits(labels=tf.reshape(targets, [-1]), logits=logits)
             self._cost = tf.reduce_mean(loss)  # loss
             tf.summary.scalar("accuracy", self._accuracy)
             tf.summary.scalar("loss", self._cost)
-        print("......building loss finished......")
+        print("......building loss end......")
         pass
