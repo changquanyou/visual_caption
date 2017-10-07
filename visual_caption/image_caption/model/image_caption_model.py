@@ -30,9 +30,6 @@ class ImageCaptionModel(BaseModel):
         self.input_seq_embeddings = tf.nn.embedding_lookup(params=self._embeddings,
                                                            ids=self.input_seqs,
                                                            name="input_seqs_embeddings")
-        # self.target_seq_embeddings = tf.nn.embedding_lookup(params=self._embeddings,
-        #                                                     ids=self.target_seqs,
-        #                                                     name="target_seqs_embeddings")
         self._input_mask = self.input_mask
 
         self._inputs = (self.input_image_embeddings, self.input_seq_embeddings, self.target_seqs, self.input_mask)

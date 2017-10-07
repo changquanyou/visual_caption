@@ -8,16 +8,12 @@ import os
 
 import tensorflow as tf
 from scipy.misc import imresize
-
-from visgen.feature.vgg19 import Vgg19
+from visual_caption.image_caption.feature.vgg19 import Vgg19
 
 vgg_data_dir = "/home/liuxiaoming/data/vgg"
 
 
 class FeatureManager(object):
-    """
-     visual feature extractor
-    """
     def __init__(self, vgg_model_dir=vgg_data_dir, sess=None):
         vgg19_npy_file = os.path.join(vgg_model_dir, "vgg19.npy")
         self.vgg_model = Vgg19(vgg19_npy_file)
@@ -27,7 +23,7 @@ class FeatureManager(object):
         self.input_images = tf.placeholder(tf.float32, [None, 224, 224, 3], name="input_images")
 
         if sess is None:
-            gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=0.6)
+            gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=0.9)
             sess_config = tf.ConfigProto(gpu_options=gpu_options,
                                          allow_soft_placement=True,
                                          log_device_placement=False)
@@ -38,12 +34,6 @@ class FeatureManager(object):
         self.vgg_model.build(self.input_images)
 
     def get_vgg_feature(self, image_batch):
-        """
-        extract feature batch for given image raw data batch
-        :param image_batch: image raw data batch
-        :return:
-            visual feature batch
-        """
         image_rawdata_batch = []
         for img in image_batch:
             # print("img.shape={}".format(img.shape))

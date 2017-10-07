@@ -24,7 +24,7 @@ class ImageCaptionDataConfig(BaseDataConfig):
         self.train_json_data = os.path.join(self.train_rawdata_dir, "caption_train_annotations_20170902.json")
         self.train_image_dir = os.path.join(self.train_rawdata_dir, "caption_train_images_20170902")
         self.train_data_dir = os.path.join(self.model_data_dir, "train")
-        self.train_tf_data_file = os.path.join(self.train_data_dir, "train.tfrecords")
+        self.train_tf_data_file = os.path.join(self.train_data_dir, "image_caption_train")
 
         # for validation
         self.validation_rawdata_dir = os.path.join(self.model_data_dir, "ai_challenger_caption_validation_20170910")
@@ -32,14 +32,14 @@ class ImageCaptionDataConfig(BaseDataConfig):
                                                  "caption_validation_annotations_20170910.json")
         self.validation_image_dir = os.path.join(self.validation_rawdata_dir, "caption_validation_images_20170910")
         self.validation_data_dir = os.path.join(self.model_data_dir, "validation")
-        self.validation_tf_data_file = os.path.join(self.validation_data_dir, "validation.tfrecords")
+        self.validation_tf_data_file = os.path.join(self.validation_data_dir, "image_caption_validation")
 
         # for test
         self.test_rawdata_dir = os.path.join(self.model_data_dir, "ai_challenger_caption_test_20170910")
         self.test_json_data = os.path.join(self.test_rawdata_dir, "caption_test_annotations_20170910.json")
         self.test_image_dir = os.path.join(self.test_rawdata_dir, "caption_test_images_20170910")
         self.test_data_dir = os.path.join(self.model_data_dir, "test")
-        self.test_tf_data_file = os.path.join(self.test_data_dir, "test.tfrecords")
+        self.test_tf_data_file = os.path.join(self.test_data_dir, "image_caption_test")
 
         # for caption txt data
         self.caption_dir = os.path.join(self.model_data_dir, "captions")

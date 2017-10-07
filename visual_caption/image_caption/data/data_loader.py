@@ -16,6 +16,7 @@ from visual_caption.image_caption.data.data_config import ImageCaptionDataConfig
 default_data_config = ImageCaptionDataConfig()
 
 import tensorflow as tf
+import numpy as np
 
 
 class ImageCaptionDataLoader(BaseDataLoader):
@@ -30,7 +31,7 @@ class ImageCaptionDataLoader(BaseDataLoader):
 
     def __init__(self, data_config=default_data_config):
         super().__init__(data_config=data_config)
-        # self.load_embeddings()
+        self.load_embeddings()
 
     def load_raw_generator(self, json_data_file, image_dir):
         """
@@ -40,6 +41,9 @@ class ImageCaptionDataLoader(BaseDataLoader):
         :return:
         """
         batch_data = []
+
+        # load_batch_size = self.data_config.batch_size
+        load_batch_size = 80
         # count = 0;
         with open(json_data_file, mode='rb') as f_json:
             item_gen = ijson.items(f_json, "item")
@@ -64,7 +68,7 @@ class ImageCaptionDataLoader(BaseDataLoader):
                     'captions': caption_list
                 }
                 batch_data.append(caption_data)
-                if len(batch_data) == self.data_config.batch_size:
+                if len(batch_data) == load_batch_size:
                     yield batch_data
                     batch_data = []
 
@@ -137,6 +141,28 @@ class ImageCaptionDataLoader(BaseDataLoader):
             model.save(model_file)
             print("Generated token2vec model to {}".format(model_file))
 
+    def load_embeddings(self):
+        """
+        load char2vec or word2vec model for token embeddings
+        :return:
+        """
+        self.token2vec = Word2Vec.load(self.data_config.char2vec_model)
+        self.vocab = self.token2vec.wv.vocab
+
+        self.token2index = {}
+        self.index2token = {}
+        self.token_embedding_matrix = np.zeros([len(self.vocab) + 1, self.data_config.embedding_dim_size])
+        for idx, token in enumerate(self.token2vec.wv.index2word):
+            token_embedding = self.token2vec.wv[token]
+            self.index2token[idx] = token
+            self.token2index[token] = idx
+            self.token_embedding_matrix[idx] = token_embedding
+
+        # for unknown token
+        self.token2index[self.data_config.unknown_token] = len(self.vocab)
+        self.vocab_size = len(self.token2index)
+
+        pass
 
 
 def main(_):

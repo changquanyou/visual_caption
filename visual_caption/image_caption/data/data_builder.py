@@ -9,11 +9,11 @@ import sys
 
 import tensorflow as tf
 
-from visgen.feature.feature import FeatureManager
 from visual_caption.base.data.base_data_builder import BaseDataBuilder
 from visual_caption.image_caption.data.data_config import ImageCaptionDataConfig
 from visual_caption.image_caption.data.data_loader import ImageCaptionDataLoader
 from visual_caption.image_caption.data.data_utils import ImageCaptionDataUtils
+from visual_caption.image_caption.feature.feature_manager import FeatureManager
 
 
 class ImageDecoder(object):
@@ -72,23 +72,22 @@ class ImageCaptionDataBuilder(BaseDataBuilder):
             data_gen = self.data_loader.load_validation_data()
             output_file = self.data_config.validation_tf_data_file
 
-        tf_writer = tf.python_io.TFRecordWriter(output_file)
-
+        batch_length = 100  # each batch contains len(batch_data) data instances,
         for batch, batch_data in enumerate(data_gen):  # for each batch
+            if batch % batch_length == 0:
+                batch_begin = batch
+                batch_end = batch_begin + batch_length
+                file = output_file + "_" + str(batch_begin) + '_' + str(batch_end) + '.tfrecords'
+                print("output_file = {}".format(file))
+                tf_writer = tf.python_io.TFRecordWriter(file)
 
-            # convert batch data to examples
             sequence_example_list = self._to_sequence_example_list(image_dir, batch_data)
-
             for sequence_example in sequence_example_list:
                 if sequence_example is not None:
                     tf_writer.write(sequence_example.SerializeToString())
-
             if batch % 10 == 0 and batch > 0:
-                print("flush batch {} dataset into file {}".format(batch, output_file))
+                print("flush batch {} dataset into file {}".format(batch, file))
                 sys.stdout.flush()
-
-            if batch % 100 == 0 and batch > 0:
-                break
 
         tf_writer.close()
         sys.stdout.flush()
@@ -120,8 +119,8 @@ class ImageCaptionDataBuilder(BaseDataBuilder):
         visual_features = self.feature_manager.get_vgg_feature(image_batch=image_batch)
 
         # get list of sequence examples for batch caption_data
-        for idx, caption_data in enumerate(batch_caption_data): # for each caption meta data
-            visual_feature = visual_features[idx] #
+        for idx, caption_data in enumerate(batch_caption_data):  # for each caption meta data
+            visual_feature = visual_features[idx]  #
 
             # get list of sequence examples for each caption_data
             example_list = self._to_sequence_example(visual_feature=visual_feature,
