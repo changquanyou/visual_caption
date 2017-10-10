@@ -177,4 +177,6 @@ class ImageCaptionDataBuilder(BaseDataBuilder):
 
 if __name__ == '__main__':
     data_builder = ImageCaptionDataBuilder()
-    data_builder.build_tfrecords(mode='train')
+    # data_builder.build_tfrecords(mode='train')
+    # data_builder.build_tfrecords(mode='test')
+    data_builder.build_tfrecords(mode='validation')

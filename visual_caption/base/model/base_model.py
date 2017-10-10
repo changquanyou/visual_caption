@@ -258,6 +258,8 @@ class BaseModel(object):
     def _run_test(self, sess, global_step):
         raise NotImplementedError()
 
-    def _run_validate(self, sess):
+    # @abstractmethod
+    def _run_validation(self, sess, global_step):
+        raise NotImplementedError()
 
-        pass
+    pass

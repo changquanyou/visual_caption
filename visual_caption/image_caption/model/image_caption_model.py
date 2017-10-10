@@ -101,3 +101,4 @@ class ImageCaptionModel(BaseModel):
             tf.summary.scalar("loss", self._cost)
         print("......building loss end......")
         pass
+

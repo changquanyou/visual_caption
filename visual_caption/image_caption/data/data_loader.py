@@ -68,6 +68,7 @@ class ImageCaptionDataLoader(BaseDataLoader):
                     'captions': caption_list
                 }
                 batch_data.append(caption_data)
+
                 if len(batch_data) == load_batch_size:
                     yield batch_data
                     batch_data = []
