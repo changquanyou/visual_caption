@@ -157,15 +157,18 @@ class ImageCaptionDataBuilder(BaseDataBuilder):
         # Extract the captions. Each image_id is associated with multiple captions.
         captions = caption_data['captions']
         sequence_example_list = []
-        for caption_txt in captions:  # for each caption text
+        for caption in captions:  # for each caption text
+            caption =str.strip(caption)
+            caption.insert(0, self.data_config.begin_token + " ")
+            caption.append(self.data_config.end_token)
             # # encoded_caption_
-            encoded_caption_txt = [token.encode() for token in caption_txt.split()]
+            encoded_caption = [token.encode() for token in caption.split()]
             # ids for each caption text
-            caption_ids = self.caption_to_ids(caption_txt)
+            caption_ids = self.caption_to_ids(encoded_caption)
 
             # feature list of each caption text and ids
             feature_lists = tf.train.FeatureLists(feature_list={
-                self.data_config.caption_text_name: self._bytes_feature_list(encoded_caption_txt),
+                self.data_config.caption_text_name: self._bytes_feature_list(encoded_caption),
                 self.data_config.caption_ids_name: self._int64_feature_list(caption_ids)
             })
 
@@ -177,6 +180,6 @@ class ImageCaptionDataBuilder(BaseDataBuilder):
 
 if __name__ == '__main__':
     data_builder = ImageCaptionDataBuilder()
-    # data_builder.build_tfrecords(mode='train')
-    # data_builder.build_tfrecords(mode='test')
+    data_builder.build_tfrecords(mode='train')
+    data_builder.build_tfrecords(mode='test')
     data_builder.build_tfrecords(mode='validation')
