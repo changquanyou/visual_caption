@@ -5,6 +5,7 @@ from __future__ import print_function
 from __future__ import unicode_literals  # compatible with python3 unicode coding
 
 import os
+import time
 
 import tensorflow as tf
 
@@ -12,28 +13,24 @@ import tensorflow as tf
 max_grad_norm = 5
 max_max_epoch = 100
 
-
-
 # Learning rate for the initial phase of training.
 learning_initial_rate = 2.0
 learning_rate_decay_factor = 0.5
 learning_num_epochs_per_decay = 8.0
 
-
 dropout_keep_prob = 0.5
 initializer_scale = 0.08
 early_stopping = 100
 
-
-#base_dir = "/home/liuxiaoming/data/visual_caption/"
+# base_dir = "/home/liuxiaoming/data/visual_caption/"
 base_dir = "/home/liuxiaoming/data/visual_caption/"
 
 
 class BaseConfig(object):
-    def __init__(self, model_name):
+    def __init__(self, model_name, mode):
         self.base_dir = base_dir
         self.model_name = model_name
-
+        self.mode = mode  # train,test or validation
         self.dropout_keep_prob = dropout_keep_prob
 
         self.learning_initial_rate = learning_initial_rate
@@ -56,9 +53,10 @@ class BaseConfig(object):
         self.data_dir = os.path.join(self.module_dir, "data")
         self.model_dir = os.path.join(self.module_dir, "model")
         self.log_dir = os.path.join(self.module_dir, "log")
+        self.log_dir = os.path.join(self.log_dir, str(time.time()))
         self.checkpoint_dir = os.path.join(self.module_dir, "checkpoint")
 
-        self.gpu_options = (tf.GPUOptions(per_process_gpu_memory_fraction=0.8))
+        self.gpu_options = (tf.GPUOptions(per_process_gpu_memory_fraction=0.9))
         self.sess_config = tf.ConfigProto(gpu_options=self.gpu_options,
                                           allow_soft_placement=True,
                                           log_device_placement=False)

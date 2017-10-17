@@ -17,7 +17,7 @@ class ImageCaptionRunner(BaseRunner):
     def __init__(self):
         data_config = ImageCaptionDataConfig()
         data_reader = ImageCaptionDataReader(data_config=data_config)
-        model_config = ImageCaptionConfig(model_name=data_config.model_name)
+        model_config = ImageCaptionConfig(model_name=data_config.model_name,mode='train')
         self.model = ImageCaptionModel(config=model_config, data_reader=data_reader)
 
     def train(self):

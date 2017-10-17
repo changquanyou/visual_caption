@@ -5,13 +5,14 @@ from __future__ import print_function
 from __future__ import unicode_literals  # compatible with python3 unicode coding
 
 import os
-import numpy as np
 
+import numpy as np
 import tensorflow as tf
+from gensim.models.word2vec import Word2Vec
 
 from visual_caption.base.data.base_data_reader import BaseDataReader
 from visual_caption.image_caption.data.data_config import ImageCaptionDataConfig
-from gensim.models.word2vec import Word2Vec
+
 
 # Data Reader class for AI_Challenge_2017
 class ImageCaptionDataReader(BaseDataReader):
@@ -58,8 +59,6 @@ class ImageCaptionDataReader(BaseDataReader):
         self.vocab_size = len(self.token2index)
 
         pass
-
-    pass
 
     def _batch_with_dynamic_pad(self, images_and_captions,
                                 batch_size,
@@ -270,16 +269,27 @@ def main(_):
     inputs = data_reader._build_data_inputs(data_dir=data_reader.data_config.train_data_dir)
     # Initialize all global and local variables
     init_op = tf.group(tf.global_variables_initializer(), tf.local_variables_initializer())
+    global_step = tf.Variable(
+        initial_value=0,
+        name="global_step",
+        trainable=False,
+        collections=[tf.GraphKeys.GLOBAL_STEP, tf.GraphKeys.GLOBAL_VARIABLES])
     with tf.Session() as sess:
         sess.run(init_op)
         # Create a coordinator and run all QueueRunner objects
         coord = tf.train.Coordinator()
         threads = tf.train.start_queue_runners(coord=coord)
+        count = 0
         try:
-            for batch_index in range(5):
-                data_batch = sess.run([inputs])
-                for idx, data in enumerate(data_batch):
-                    print("batch={}, data={}".format(batch_index, data))
+            while not coord.should_stop():
+
+                data_batch = sess.run(inputs)
+                images_batch, input_seqs_batch, target_seqs_batch, input_mask_batch = data_batch
+                count += 1
+                for idx, data in enumerate(input_seqs_batch):
+                    print('batch={}, idx={}'.format(count, idx))
+                    print("{}".format(input_seqs_batch[idx]))
+                    print("{}".format(target_seqs_batch[idx]))
 
         except Exception as e:
             print(e)

@@ -6,10 +6,64 @@ from __future__ import unicode_literals  # compatible with python3 unicode codin
 
 import logging
 import os
+import sys
 import time
 from abc import ABCMeta, abstractmethod
+from functools import wraps
 
 import tensorflow as tf
+
+
+def timeit(f):
+    def timed(*args, **kw):
+        ts = time.time()
+        print('......   begin  {}   ......'.format(f.__name__))
+        result = f(*args, **kw)
+        te = time.time()
+        print('......   finish {}, took: {} sec   ......'.format(f.__name__, te - ts))
+        return result
+
+    return timed
+
+
+def doublewrap(function):
+    """
+    A decorator decorator, allowing to use the decorator to be used without
+    parentheses if not arguments are provided. All arguments must be optional.
+    """
+
+    @wraps(function)
+    def decorator(*args, **kwargs):
+        if len(args) == 1 and len(kwargs) == 0 and callable(args[0]):
+            return function(args[0])
+        else:
+            return lambda wrapee: function(wrapee, *args, **kwargs)
+
+    return decorator
+
+
+@doublewrap
+def define_scope(function, scope_name=None, *args, **kwargs):
+    """
+    A decorator for functions that define TensorFlow operations. The wrapped
+    function will only be executed once. Subsequent calls to it will directly
+    return the result so that operations are added to the graph only once.
+    The operations added by the function live within a tf.variable_scope(). If
+    this decorator is used with arguments, they will be forwarded to the
+    variable scope. The scope name defaults to the name of the wrapped
+    function.
+    """
+    attribute = '_cache_' + function.__name__
+    name = scope_name or function.__name__
+
+    @wraps(function)
+    def decorator(self):
+        if not hasattr(self, attribute):
+            with tf.variable_scope(name, *args, **kwargs):
+                setattr(self, attribute, function(self))
+        return getattr(self, attribute)
+
+    return decorator
 
 
 class BaseModel(object):
@@ -34,11 +88,10 @@ class BaseModel(object):
 
         self._build_model()
 
+    @timeit
     def _build_model(self):
-        print("...building model...")
         self._get_logger()
         self._setup_global_step()
-
         self._build_inputs()
         self._build_network()
         self._build_loss()
@@ -46,18 +99,23 @@ class BaseModel(object):
         self._build_train_op()
         self._build_summaries()
         self._build_fetches()
-        print("...building model finished...")
 
+    @timeit
+    @define_scope(scope_name='inputs')
     @abstractmethod
     def _build_inputs(self):
         # define inputs variables
         raise NotImplementedError()
 
+    @timeit
+    @define_scope(scope_name='network')
     @abstractmethod
     def _build_network(self):
         # define deep network of computation graph
         raise NotImplementedError()
 
+    @timeit
+    @define_scope(scope_name='losses')
     @abstractmethod
     def _build_loss(self):
         # define loss
@@ -68,24 +126,19 @@ class BaseModel(object):
         # define default fetches for run_epoch
         raise NotImplementedError()
 
+    @timeit
+    @define_scope(scope_name='optimizer')
     def _build_optimizer(self):
-        print("......building optimizer begin......")
-        with tf.name_scope("optimizer"):
-            self._optimizer = tf.train.AdamOptimizer()
-            # tf.summary.scalar('learning_rate', self.config.learning_rate)
-        print("......building optimizer end......")
+        self._optimizer = tf.train.AdamOptimizer()
 
+    @timeit
+    @define_scope(scope_name='train_op')
     def _build_train_op(self):
-        print("......building train_op begin......")
 
-        # num_examples_per_epoch = self._data_reader.num_examples_per_epoch
         num_examples_per_epoch = 10000
-
         learning_initial_rate = tf.constant(self.config.learning_initial_rate)
         batch_size = self._data_reader.data_config.batch_size
-
         num_batches_per_epoch = (num_examples_per_epoch / batch_size)
-
         decay_steps = int(num_batches_per_epoch *
                           self.config.learning_num_epochs_per_decay)
 
@@ -118,18 +171,15 @@ class BaseModel(object):
                 learning_rate_decay_fn=learning_rate_decay_fn
             )
             # tf.summary.scalar('train_op', self._train_op)
-        print("......building train_op end......")
 
+    @timeit
+    @define_scope(scope_name='summaries')
     def _build_summaries(self):
         """Attach a lot of summaries to a Tensor (for TensorBoard visualization)."""
-        print("......building summary begin......")
-        with tf.name_scope("summaries"):
-            for (summary_key, summary_value) in self._summary_list:
-                tf.summary.scalar(summary_key, summary_value)
-                tf.summary.histogram(summary_key, summary_value)
-            # merge them all
-            self._merged = tf.summary.merge_all()
-        print("......building summary end......")
+        for (summary_key, summary_value) in self._summary_list:
+            tf.summary.scalar(summary_key, summary_value)
+            tf.summary.histogram(summary_key, summary_value)
+        self._merged = tf.summary.merge_all()
 
     def _run_epoch(self, sess, num_epoch, mode):
         """
@@ -165,6 +215,7 @@ class BaseModel(object):
         print("......end " + mode + " epoch {}.....".format(num_epoch))
         return global_step, total_loss
 
+    @timeit
     def _save_model(self, sess, global_step):
         model_name = self.config.model_name
         checkpoint_dir = self.config.checkpoint_dir
@@ -174,6 +225,7 @@ class BaseModel(object):
         saver.save(sess, os.path.join(checkpoint_dir, model_name), global_step=global_step)
         self.logger.info("save model {} at step {}".format(model_name, global_step))
 
+    @timeit
     def _restore_model(self, checkpoint):
         print(" [*] Reading checkpoint...")
         model_name = self.config.model_name
@@ -190,12 +242,14 @@ class BaseModel(object):
         else:
             return False
 
+    @timeit
     def _get_logger(self):
         logger = logging.getLogger("logger")
         logger.setLevel(logging.DEBUG)
         logging.basicConfig(format="%(message)s", level=logging.DEBUG)
         self.logger = logger
 
+    @timeit
     def _setup_global_step(self):
         """Sets up the global step Tensor."""
         global_step = tf.Variable(
@@ -221,35 +275,30 @@ class BaseModel(object):
                 saver.restore(sess, tf.train.latest_checkpoint(checkpoint_dir))
             else:
                 self.logger.info("Created model with fresh parameters.")
-                sess.run(tf.global_variables_initializer())
+                init_op = tf.group(tf.global_variables_initializer(), tf.local_variables_initializer())
+                sess.run(init_op)
 
-            # 最优解
-            best_val_acc = 0.0
-            best_val_epoch = 0
-
-            for epoch in range(epoch_size):
+            # Create a coordinator and run all QueueRunner objects
+            coord = tf.train.Coordinator()
+            threads = tf.train.start_queue_runners(sess, coord)
+            train_fetches = self._build_fetches()
+            try:
                 start = time.time()
-
-                global_step, epoch_loss = self._run_epoch(num_epoch=epoch, sess=sess, mode="train")
-
-                valid_acc = self._run_test(sess=sess, global_step=global_step)
-
-                tf.summary.scalar("valid_accuracy", valid_acc)
-
-                self.logger.info(
-                    "epoch={},global_step={},epoch_loss={},valid_acc={}".format(epoch, global_step, epoch_loss,
-                                                                                valid_acc))
-                # 更新并保存最优 epoch
-                if valid_acc > best_val_acc:
-                    best_val_acc = valid_acc
-                    best_val_epoch = epoch
-                    self._save_model(sess=sess, global_step=global_step)
-
-                print('best valid_acc is {} in epoch: {}'.format(best_val_acc, best_val_epoch))
-                self.logger.info('Total time for running epoch {} is : {}'.format(epoch, time.time() - start))
-                # early_stopping
-                if epoch - best_val_epoch > self.config.early_stopping:
-                    break
+                while not coord.should_stop():
+                    global_step = tf.train.global_step(sess, self._global_step)
+                    _, batch_loss, batch_summary = sess.run(fetches=train_fetches)
+                    self._summary_writer.add_summary(batch_summary, global_step=global_step)
+            except tf.errors.OutOfRangeError:
+                print("Done training after reading all data")
+            except Exception as exception:
+                print(exception)
+            except:
+                print("Unexpected error:", sys.exc_info()[0])
+                raise
+            finally:
+                # finalise
+                coord.request_stop()  # Stop the threads
+                coord.join(threads)  # Wait for threads to stop
 
             self._summary_writer.close()
         print("......end training.....")
@@ -258,7 +307,7 @@ class BaseModel(object):
     def _run_test(self, sess, global_step):
         raise NotImplementedError()
 
-    # @abstractmethod
+    @abstractmethod
     def _run_validation(self, sess, global_step):
         raise NotImplementedError()
 
