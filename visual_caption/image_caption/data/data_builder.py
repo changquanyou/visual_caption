@@ -98,7 +98,12 @@ class ImageCaptionDataBuilder(BaseDataBuilder):
         :param caption_txt:
         :return:
         """
-        ids = [self.token2index[token] for token in caption_txt]
+        ids = []
+        for token in caption_txt:
+            if token in self.token2index.keys():
+                ids.append(self.token2index[token])
+            else:
+                ids.append(self.token2index[self.data_config.unknown_token])
         return ids
 
     def _to_sequence_example_list(self, image_dir, batch_caption_data):
@@ -158,17 +163,19 @@ class ImageCaptionDataBuilder(BaseDataBuilder):
         captions = caption_data['captions']
         sequence_example_list = []
         for caption in captions:  # for each caption text
-            caption =str.strip(caption)
-            caption.insert(0, self.data_config.begin_token + " ")
-            caption.append(self.data_config.end_token)
+            caption = str.strip(caption)
+            # char_list = [char for char in caption]
+            # char_list.insert(0,self.data_config.begin_token)
+            # char_list.append(self.data_config.end_token)
+
             # # encoded_caption_
-            encoded_caption = [token.encode() for token in caption.split()]
+            caption_encoded = [char.encode() for char in caption]
             # ids for each caption text
-            caption_ids = self.caption_to_ids(encoded_caption)
+            caption_ids = self.caption_to_ids(caption)
 
             # feature list of each caption text and ids
             feature_lists = tf.train.FeatureLists(feature_list={
-                self.data_config.caption_text_name: self._bytes_feature_list(encoded_caption),
+                self.data_config.caption_text_name: self._bytes_feature_list(caption_encoded),
                 self.data_config.caption_ids_name: self._int64_feature_list(caption_ids)
             })
 
