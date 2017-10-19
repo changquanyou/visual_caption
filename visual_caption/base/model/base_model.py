@@ -311,4 +311,7 @@ class BaseModel(object):
     def _run_validation(self, sess, global_step):
         raise NotImplementedError()
 
+    @abstractmethod
+    def _run_inference(self):
+        raise NotImplementedError()
     pass

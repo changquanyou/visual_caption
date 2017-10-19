@@ -56,7 +56,10 @@ class BaseConfig(object):
         self.log_dir = os.path.join(self.log_dir, str(time.time()))
         self.checkpoint_dir = os.path.join(self.module_dir, "checkpoint")
 
-        self.gpu_options = (tf.GPUOptions(per_process_gpu_memory_fraction=0.9))
-        self.sess_config = tf.ConfigProto(gpu_options=self.gpu_options,
-                                          allow_soft_placement=True,
-                                          log_device_placement=False)
+        # for session and gpu
+        config = tf.ConfigProto()
+        config.gpu_options.per_process_gpu_memory_fraction = 0.9  # 程序最多只能占用指定gpu50%的显存
+        config.gpu_options.allow_growth = True  # 程序按需申请内存
+        config.allow_soft_placement = True
+        config.log_device_placement = False
+        self.sess_config = config

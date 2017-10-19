@@ -10,7 +10,7 @@ import time
 import tensorflow as tf
 
 from visual_caption.base.model.base_model import BaseModel, timeit, define_scope
-
+from visual_caption.image_caption.data.data_embedding import ImageCaptionDataEmbedding
 
 class ImageCaptionModel(BaseModel):
     def __init__(self, config, data_reader):
@@ -24,20 +24,23 @@ class ImageCaptionModel(BaseModel):
         data_config = self._data_reader.data_config
 
         train_inputs = self._data_reader._build_data_inputs(data_config.train_data_dir)
-        test_inputs = self._data_reader._build_data_inputs(data_config.test_data_dir)
+        # test_inputs = self._data_reader._build_data_inputs(data_config.test_data_dir)
         validation_inputs = self._data_reader._build_data_inputs(data_config.validation_data_dir)
 
-        self._embeddings = tf.Variable(self._data_reader.token_embedding_matrix,
+        self._data_embedding = ImageCaptionDataEmbedding()
+
+        self._embeddings = tf.Variable(self._data_embedding.token_embedding_matrix,
                                        dtype=self.config.data_type,
                                        trainable=self.config.train_embeddings,
                                        name='token_embedding')
+
         self.input_image_embeddings = tf.placeholder(dtype=tf.float32,
                                                      shape=[batch_size, 4096],
                                                      name='image_embeddings')
         if self.config.mode == 'train':
             images_batch, input_seqs_batch, target_seqs_batch, input_mask_batch = train_inputs
-        elif self.config.mode == 'test':
-            images_batch, input_seqs_batch, target_seqs_batch, input_mask_batch = test_inputs
+        # elif self.config.mode == 'test':
+        #     images_batch, input_seqs_batch, target_seqs_batch, input_mask_batch = test_inputs
         elif self.config.mode == 'validation':
             images_batch, input_seqs_batch, target_seqs_batch, input_mask_batch = validation_inputs
 
@@ -48,7 +51,7 @@ class ImageCaptionModel(BaseModel):
         self.target_seqs = target_seqs_batch
         self.input_masks = input_mask_batch
 
-    def __create_cell(self):
+    def __create_rnn_cell(self):
         # This RNN cell has biases and outputs tanh(new_c) * sigmoid(o), but the
         # modified RNN in the "Show and Tell" paper has no biases and outputs
         # new_c * sigmoid(o).
@@ -66,29 +69,48 @@ class ImageCaptionModel(BaseModel):
         data_type = self.config.data_type
         hidden_neural_num = self.config.hidden_neural_num
 
-        rnn_cell = self.__create_cell()
+        rnn_cell = self.__create_rnn_cell()
         # Feed the image embeddings to set the initial LSTM state.
         zero_state = rnn_cell.zero_state(
             batch_size=self.input_image_embeddings.get_shape()[0], dtype=tf.float32)
         _, initial_state = rnn_cell(self.input_image_embeddings, zero_state)
 
-        """build the Bi_GRU network. Return the y_pred"""
-        # cell_fw = tf.contrib.rnn.MultiRNNCell([self.__create_cell() for _ in range(layer_num)], state_is_tuple=True)
-        # cell_bw = tf.contrib.rnn.MultiRNNCell([self.__create_cell() for _ in range(layer_num)], state_is_tuple=True)
+        # stack multi layers RNN
+        # cells_forward = tf.contrib.rnn.MultiRNNCell(cells=[self.__create_rnn_cell() for _ in range(layer_num)],
+        #                                             state_is_tuple=True)
+        # cells_backward = tf.contrib.rnn.MultiRNNCell(cells=[self.__create_rnn_cell() for _ in range(layer_num)],
+        #                                              state_is_tuple=True)
 
-        sequence_lengths = tf.reduce_sum(self.input_masks, 1)
+        if self.config.mode == "inference":
+            # In inference mode, use concatenated states for convenient feeding and
+            # fetching.
+            tf.concat(axis=1, values=initial_state, name="initial_state")
+            # Placeholder for feeding a batch of concatenated states.
+            state_feed = tf.placeholder(dtype=tf.float32,
+                                        shape=[None, sum(rnn_cell.state_size)],
+                                        name="state_feed")
+            state_tuple = tf.split(value=state_feed, num_or_size_splits=2, axis=1)
+            # Run a single run step.
+            outputs, state_tuple = rnn_cell(inputs=tf.squeeze(self.seq_embeddings, axis=[1]),
+                                            state=state_tuple)
+            # Concatentate the resulting state.
+            tf.concat(axis=1, values=state_tuple, name="state")
+        else:
+            sequence_lengths = tf.reduce_sum(self.input_masks, 1)
+            cell_fw = self.__create_rnn_cell()
+            cell_bw = self.__create_rnn_cell()
+            # cell_fw = cells_forward
+            # cell_bw = cells_backward
 
-        cell_fw = self.__create_cell()
-        cell_bw = self.__create_cell()
-        outputs, output_states = tf.nn.bidirectional_dynamic_rnn(
-            cell_fw=cell_fw,
-            cell_bw=cell_bw,
-            inputs=self.input_seq_embeddings,
-            sequence_length=sequence_lengths,
-            initial_state_fw=initial_state,
-            initial_state_bw=initial_state,
-            dtype=data_type
-        )
+            outputs, outputs_states = tf.nn.bidirectional_dynamic_rnn(
+                cell_fw=cell_fw,
+                cell_bw=cell_bw,
+                inputs=self.input_seq_embeddings,
+                sequence_length=sequence_lengths,
+                initial_state_fw=initial_state,
+                initial_state_bw=initial_state,
+                dtype=data_type
+            )
         # outputs is a length T list of output vectors, which is [batch_size, 2 * hidden_size]
         # [time][batch][cell_fw.output_size + cell_bw.output_size]
         self._outputs = tf.reshape(tf.concat(outputs, 1), [-1, hidden_neural_num * 2])
@@ -157,7 +179,7 @@ class ImageCaptionModel(BaseModel):
     def _build_loss(self):
         # Compute logits and weights
         hidden_size = self.config.hidden_neural_num
-        vocab_size = self._data_reader.vocab_size
+        vocab_size = self._data_embedding.vocab_size
         data_type = self.config.data_type
 
         with tf.variable_scope('softmax'):
@@ -177,4 +199,8 @@ class ImageCaptionModel(BaseModel):
             self._cost = tf.reduce_mean(loss)  # loss
             tf.summary.scalar("accuracy", self._accuracy)
             tf.summary.scalar("loss", self._cost)
+        pass
+
+    def _run_inference(self):
+
         pass

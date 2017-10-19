@@ -28,7 +28,7 @@ class ImageCaptionRunner(BaseRunner):
         self.model.run_test()
         pass
 
-    def infer(self):
+    def inference(self):
         self.model.run_infer()
         pass
 
