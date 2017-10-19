@@ -12,6 +12,6 @@ class ImageCaptionConfig(BaseConfig):
         super().__init__(model_name=model_name, mode=mode)
         self.train_embeddings = False
         self.hidden_layer_num = 2
-        self.hidden_neural_num = 512
+        self.hidden_neural_num = 128
 
     pass

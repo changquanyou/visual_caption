@@ -7,7 +7,9 @@ from __future__ import unicode_literals  # compatible with python3 unicode codin
 import os
 
 import numpy as np
+import tensorflow as tf
 from gensim.models.word2vec import LineSentence, Word2Vec
+from tensorflow.contrib.tensorboard.plugins import projector
 
 from visual_caption.image_caption.data.data_config import ImageCaptionDataConfig
 from visual_caption.image_caption.data.data_loader import ImageCaptionDataLoader
@@ -76,25 +78,63 @@ class ImageCaptionDataEmbedding():
         :return:
         """
         token2vec = Word2Vec.load(self.data_config.char2vec_model)
-        vocab = token2vec.wv.vocab
+        self.vocab = dict()
+        for token, item in token2vec.wv.vocab.items():
+            self.vocab[token] = {'count': item.count,
+                                 'index': item.index}
+        self.vocab[self.data_config.unknown_token] = {'count': 0,
+                                                      'index': len(token2vec.wv.vocab)}
 
         self.token2index = dict()
         self.index2token = dict()
-        self.token_embedding_matrix = np.zeros([len(vocab)+1, self.data_config.embedding_dim_size])
+        self.token_embedding_matrix = np.zeros([len(self.vocab), self.data_config.embedding_dim_size])
 
         for idx, token in enumerate(token2vec.wv.index2word):
             token_embedding = token2vec.wv[token]
             self.index2token[idx] = token
             self.token2index[token] = idx
             self.token_embedding_matrix[idx] = token_embedding
-        idx+=1
+        idx += 1
         # for unknown token
         self.token_embedding_matrix[idx] = np.zeros(shape=[self.data_config.embedding_dim_size])
-        self.token2index[self.data_config.unknown_token] = len(vocab)
+        self.token2index[self.data_config.unknown_token] = idx
         self.index2token[idx] = self.data_config.unknown_token
-        self.vocab_size = len(self.token2index)
+        self.vocab_size = len(self.vocab)
 
         pass
+
+    def visualize(self, model):
+        if not model:
+            model = Word2Vec.load(self.data_config.char2vec_model)
+        meta_file = "metadata.tsv"
+        placeholder = np.zeros((len(model.wv.index2word), self.data_config.embedding_dim_size))
+        with open(os.path.join(self.data_config.embedding_dir, meta_file), 'wb') as file_metadata:
+            for i, word in enumerate(model.wv.index2word):
+                placeholder[i] = model[word]
+                # temporary solution for https://github.com/tensorflow/tensorflow/issues/9094
+                if word == '':
+                    print("Emply Line, should replecaed by any thing else, or will cause a bug of tensorboard")
+                    file_metadata.write("{0}".format('<Empty Line>').encode('utf-8') + b'\n')
+                else:
+                    file_metadata.write("{0}".format(word).encode('utf-8') + b'\n')
+
+        # define the model without training
+        with tf.Session() as sess:
+            embedding = tf.Variable(placeholder, trainable=False, name='w2x_metadata')
+            tf.global_variables_initializer().run()
+            saver = tf.train.Saver()
+            writer = tf.summary.FileWriter(self.data_config.embedding_dir, sess.graph)
+
+            # adding into projector
+            config = projector.ProjectorConfig()
+            embed = config.embeddings.add()
+            embed.tensor_name = 'metadata'
+            embed.metadata_path = meta_file
+
+            # Specify the width and height of a single thumbnail.
+            projector.visualize_embeddings(writer, config)
+            saver.save(sess, os.path.join(self.data_config.embedding_dir, 'w2x_metadata.ckpt'))
+            print('Run `tensorboard --logdir={0}` to run visualize result on tensorboard'.format(self.data_config.embedding_dir))
 
     def text_to_ids(self, text):
 
@@ -113,3 +153,8 @@ class ImageCaptionDataEmbedding():
             else:
                 ids.append(self.token2index[self.data_config.unknown_token])
         return ids
+
+if __name__ == '__main__':
+
+    data_embeddings = ImageCaptionDataEmbedding()
+    data_embeddings.visualize(model=None)

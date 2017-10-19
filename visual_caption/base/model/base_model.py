@@ -92,6 +92,7 @@ class BaseModel(object):
     def _build_model(self):
         self._get_logger()
         self._setup_global_step()
+        self._build_embeddings()
         self._build_inputs()
         self._build_network()
         self._build_loss()
@@ -99,6 +100,13 @@ class BaseModel(object):
         self._build_train_op()
         self._build_summaries()
         self._build_fetches()
+
+
+    @timeit
+    @define_scope(scope_name='embeddings')
+    def _build_embeddings(self):
+        pass
+
 
     @timeit
     @define_scope(scope_name='inputs')

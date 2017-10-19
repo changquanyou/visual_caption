@@ -4,17 +4,56 @@ from __future__ import division
 from __future__ import print_function
 from __future__ import unicode_literals  # compatible with python3 unicode coding
 
+import os
 import sys
 import time
 
 import tensorflow as tf
+from tensorflow.contrib.tensorboard.plugins import projector
 
 from visual_caption.base.model.base_model import BaseModel, timeit, define_scope
 from visual_caption.image_caption.data.data_embedding import ImageCaptionDataEmbedding
 
+
 class ImageCaptionModel(BaseModel):
     def __init__(self, config, data_reader):
         super().__init__(config=config, data_reader=data_reader)
+
+    @timeit
+    @define_scope(scope_name='embeddings')
+    def _build_embeddings(self):
+
+        data_config = self._data_reader.data_config
+        self._data_embedding = ImageCaptionDataEmbedding()
+        self._embeddings = tf.Variable(self._data_embedding.token_embedding_matrix,
+                                       dtype=self.config.data_type,
+                                       trainable=self.config.train_embeddings,
+                                       name='token_embedding')
+
+        # embedding session
+        with tf.Session() as sess:
+            X = tf.Variable([0.0], name='embedding')
+            place = tf.placeholder(tf.float32, shape=self._data_embedding.token_embedding_matrix.shape)
+            set_x = tf.assign(X, place, validate_shape=False)
+            sess.run(tf.global_variables_initializer())
+            sess.run(set_x, feed_dict={place: self._data_embedding.token_embedding_matrix})
+
+            # write labels
+            medadata_file = os.path.join(data_config.embedding_dir, 'metadata.tsv')
+            with open(file=medadata_file, mode='w') as f:
+                for word, item in self._data_embedding.vocab.items():
+                    f.write(word + '\t' + str(item['count']) + '\n')
+            # create a TensorFlow summary writer
+            # summary_writer = tf.summary.FileWriter(self.config.log_dir, sess.graph)
+            config = projector.ProjectorConfig()
+            embedding_conf = config.embeddings.add()
+            embedding_conf.tensor_name = 'char_embeddings'
+            embedding_conf.metadata_path = medadata_file
+            projector.visualize_embeddings(self._summary_writer, config)
+
+            # save the model
+            saver = tf.train.Saver()
+            saver.save(sess, os.path.join(self.config.log_dir, "embedding_model.ckpt"))
 
     @timeit
     @define_scope(scope_name='inputs')
@@ -26,13 +65,6 @@ class ImageCaptionModel(BaseModel):
         train_inputs = self._data_reader._build_data_inputs(data_config.train_data_dir)
         # test_inputs = self._data_reader._build_data_inputs(data_config.test_data_dir)
         validation_inputs = self._data_reader._build_data_inputs(data_config.validation_data_dir)
-
-        self._data_embedding = ImageCaptionDataEmbedding()
-
-        self._embeddings = tf.Variable(self._data_embedding.token_embedding_matrix,
-                                       dtype=self.config.data_type,
-                                       trainable=self.config.train_embeddings,
-                                       name='token_embedding')
 
         self.input_image_embeddings = tf.placeholder(dtype=tf.float32,
                                                      shape=[batch_size, 4096],
