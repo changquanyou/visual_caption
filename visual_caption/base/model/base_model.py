@@ -13,6 +13,7 @@ from functools import wraps
 
 import tensorflow as tf
 
+from tensorflow.contrib.tensorboard.plugins import projector
 
 def timeit(f):
     def timed(*args, **kw):
@@ -188,6 +189,14 @@ class BaseModel(object):
             tf.summary.scalar(summary_key, summary_value)
             tf.summary.histogram(summary_key, summary_value)
         self._merged = tf.summary.merge_all()
+        # adding embeddings into projector
+        config = projector.ProjectorConfig()
+        embed = config.embeddings.add()
+        embed.tensor_name = 'token_embeddings'
+        meta_file = os.path.join(self._data_reader.data_config.embedding_dir, "metadata.tsv")
+        embed.metadata_path = meta_file
+        projector.visualize_embeddings(self._summary_writer, config)
+
 
     def _run_epoch(self, sess, num_epoch, mode):
         """

@@ -3,7 +3,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 from __future__ import unicode_literals  # compatible with python3 unicode coding
-
+from tensorflow.contrib.tensorboard.plugins import projector
 import os
 
 import numpy as np
@@ -15,7 +15,7 @@ from visual_caption.image_caption.data.data_config import ImageCaptionDataConfig
 from visual_caption.image_caption.data.data_loader import ImageCaptionDataLoader
 
 
-class ImageCaptionDataEmbedding():
+class ImageCaptionDataEmbedding(object):
     def __init__(self):
         self.data_loader = ImageCaptionDataLoader()
         self.data_config = ImageCaptionDataConfig()
@@ -106,10 +106,10 @@ class ImageCaptionDataEmbedding():
     def visualize(self, model):
         if not model:
             model = Word2Vec.load(self.data_config.char2vec_model)
-        meta_file = "metadata.tsv"
+        meta_file = os.path.join(self.data_config.embedding_dir,"metadata.tsv")
         placeholder = np.zeros((len(model.wv.index2word), self.data_config.embedding_dim_size))
-        with open(os.path.join(self.data_config.embedding_dir, meta_file), 'wb') as file_metadata:
-            for i, word in enumerate(model.wv.index2word):
+        with open(meta_file, 'wb') as file_metadata:
+             for i, word in enumerate(model.wv.index2word):
                 placeholder[i] = model[word]
                 # temporary solution for https://github.com/tensorflow/tensorflow/issues/9094
                 if word == '':
@@ -118,23 +118,23 @@ class ImageCaptionDataEmbedding():
                 else:
                     file_metadata.write("{0}".format(word).encode('utf-8') + b'\n')
 
-        # define the model without training
-        with tf.Session() as sess:
-            embedding = tf.Variable(placeholder, trainable=False, name='w2x_metadata')
-            tf.global_variables_initializer().run()
-            saver = tf.train.Saver()
-            writer = tf.summary.FileWriter(self.data_config.embedding_dir, sess.graph)
+         # define the model without training
+        sess = tf.InteractiveSession()
+        token_embeddings = tf.Variable(placeholder, trainable=False, name='token_embeddings')
+        tf.global_variables_initializer().run()
+        saver = tf.train.Saver()
+        writer = tf.summary.FileWriter(self.data_config.embedding_dir, sess.graph)
 
-            # adding into projector
-            config = projector.ProjectorConfig()
-            embed = config.embeddings.add()
-            embed.tensor_name = 'metadata'
-            embed.metadata_path = meta_file
+        # adding into projector
+        config = projector.ProjectorConfig()
+        embed = config.embeddings.add()
+        embed.tensor_name = 'token_embeddings'
+        embed.metadata_path = meta_file
 
-            # Specify the width and height of a single thumbnail.
-            projector.visualize_embeddings(writer, config)
-            saver.save(sess, os.path.join(self.data_config.embedding_dir, 'w2x_metadata.ckpt'))
-            print('Run `tensorboard --logdir={0}` to run visualize result on tensorboard'.format(self.data_config.embedding_dir))
+        # Specify the width and height of a single thumbnail.
+        projector.visualize_embeddings(writer, config)
+        saver.save(sess, os.path.join(self.data_config.embedding_dir, 'metadata.ckpt'))
+        print('Run `tensorboard --logdir={0}` to run visualize result on tensorboard'.format(self.data_config.embedding_dir))
 
     def text_to_ids(self, text):
 
