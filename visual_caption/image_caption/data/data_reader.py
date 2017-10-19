@@ -12,6 +12,7 @@ from gensim.models.word2vec import Word2Vec
 
 from visual_caption.base.data.base_data_reader import BaseDataReader
 from visual_caption.image_caption.data.data_config import ImageCaptionDataConfig
+from visual_caption.image_caption.data.data_embedding import ImageCaptionDataEmbedding
 
 
 # Data Reader class for AI_Challenge_2017
@@ -35,30 +36,7 @@ class ImageCaptionDataReader(BaseDataReader):
             self.data_config.caption_ids_name: tf.FixedLenSequenceFeature([], dtype=tf.int64)
         }
 
-        self.load_embeddings()
-
-    def load_embeddings(self):
-        """
-        load char2vec or word2vec model for token embeddings
-        :return:
-        """
-        self.token2vec = Word2Vec.load(self.data_config.char2vec_model)
-        self.vocab = self.token2vec.wv.vocab
-
-        self.token2index = {}
-        self.index2token = {}
-        self.token_embedding_matrix = np.zeros([len(self.vocab) + 1, self.data_config.embedding_dim_size])
-        for idx, token in enumerate(self.token2vec.wv.index2word):
-            token_embedding = self.token2vec.wv[token]
-            self.index2token[idx] = token
-            self.token2index[token] = idx
-            self.token_embedding_matrix[idx] = token_embedding
-
-        # for unknown token
-        self.token2index[self.data_config.unknown_token] = len(self.vocab)
-        self.vocab_size = len(self.token2index)
-
-        pass
+        self.data_embeding = ImageCaptionDataEmbedding()
 
     def _batch_with_dynamic_pad(self, images_and_captions,
                                 batch_size,
@@ -282,14 +260,13 @@ def main(_):
         count = 0
         try:
             while not coord.should_stop():
-
                 data_batch = sess.run(inputs)
                 images_batch, input_seqs_batch, target_seqs_batch, input_mask_batch = data_batch
                 count += 1
                 for idx, data in enumerate(input_seqs_batch):
                     print('batch={}, idx={}'.format(count, idx))
-                    print("{}".format(input_seqs_batch[idx]))
-                    print("{}".format(target_seqs_batch[idx]))
+                    # print("{}".format(input_seqs_batch[idx]))
+                    # print("{}".format(target_seqs_batch[idx]))
 
         except Exception as e:
             print(e)
