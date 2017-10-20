@@ -6,9 +6,7 @@ from __future__ import unicode_literals  # compatible with python3 unicode codin
 
 import os
 
-import numpy as np
 import tensorflow as tf
-from gensim.models.word2vec import Word2Vec
 
 from visual_caption.base.data.base_data_reader import BaseDataReader
 from visual_caption.image_caption.data.data_config import ImageCaptionDataConfig
@@ -36,7 +34,28 @@ class ImageCaptionDataReader(BaseDataReader):
             self.data_config.caption_ids_name: tf.FixedLenSequenceFeature([], dtype=tf.int64)
         }
 
-        self.data_embeding = ImageCaptionDataEmbedding()
+        self.data_embedding = ImageCaptionDataEmbedding()
+        self.num_examples_per_epoch = self._get_num_examples_per_epoch()
+
+    @staticmethod
+    def _get_tfrecord_files(data_dir):
+        data_files = []
+        for filename in os.listdir(data_dir):
+            filename = os.path.join(data_dir, filename)
+            data_files.extend(tf.gfile.Glob(filename))
+        if not data_files:
+            tf.logging.fatal("Found no input files matching %s", data_dir)
+        else:
+            tf.logging.info("Prefetching values from %d files matching %s",
+                            len(data_files), data_dir)
+        return data_files
+
+    def _get_num_examples_per_epoch(self):
+        tf_records_filenames = self._get_tfrecord_files(data_dir=self.data_config.train_data_dir)
+        num_examples_per_epoch = sum(1 for record in [tf.python_io.tf_record_iterator(fn)
+                                                      for fn in tf_records_filenames])
+        return num_examples_per_epoch
+        pass
 
     def _batch_with_dynamic_pad(self, images_and_captions,
                                 batch_size,

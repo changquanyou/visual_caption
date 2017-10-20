@@ -4,12 +4,10 @@ from __future__ import division
 from __future__ import print_function
 from __future__ import unicode_literals  # compatible with python3 unicode coding
 
-import os
 import sys
 import time
 
 import tensorflow as tf
-from tensorflow.contrib.tensorboard.plugins import projector
 
 from visual_caption.base.model.base_model import BaseModel, timeit, define_scope
 from visual_caption.image_caption.data.data_embedding import ImageCaptionDataEmbedding
@@ -123,8 +121,18 @@ class ImageCaptionModel(BaseModel):
         self._outputs = tf.reshape(tf.concat(outputs, 1), [-1, hidden_neural_num * 2])
         # output has size: [T, size * 2]
 
+        # Compute logits and weights
+        hidden_size = self.config.hidden_neural_num
+        vocab_size = self._data_embedding.vocab_size
+        data_type = self.config.data_type
+
+        with tf.variable_scope('logits'):
+            softmax_w = tf.get_variable("softmax_w", [hidden_size * 2, vocab_size], dtype=data_type)
+            softmax_b = tf.get_variable("softmax_b", [vocab_size], dtype=data_type)
+            self._logits = tf.matmul(self._outputs, softmax_w) + softmax_b  # logits shape[time_step, target_num]
+
     def _build_fetches(self):
-        self.fetches = [self._train_op, self._cost, self._merged]
+        self.fetches = [self._train_op, self._accuracy, self._loss, self._merged]
         return self.fetches
 
     def run_train(self):
@@ -154,14 +162,15 @@ class ImageCaptionModel(BaseModel):
                 # batch_count = 0
                 while not coord.should_stop():
                     global_step = tf.train.global_step(sess, self._global_step)
-                    _, batch_loss, batch_summary = sess.run(fetches=train_fetches)
+                    _, batch_accuracy, batch_loss, batch_summary = sess.run(fetches=train_fetches)
                     self._summary_writer.add_summary(batch_summary, global_step=global_step)
                     # batch_count += 1
 
                     if global_step % 100 == 0 and global_step > 0:
                         last = time.time() - start
-                        print('global_step={}, loss={}, time={}'.format(global_step, batch_loss, last))
-                    if global_step % 1000 == 0 and global_step > 0:
+                        print('global_step={}, accuracy={}, loss={}, time={}'.format(global_step, batch_accuracy,
+                                                                                     batch_loss, last))
+                    if global_step % 10000 == 0 and global_step > 0:
                         self._save_model(sess=sess, global_step=global_step)
                         last = time.time() - start
                         print('global_step={}, loss={}, time={}'.format(global_step, batch_loss, last))
@@ -184,30 +193,30 @@ class ImageCaptionModel(BaseModel):
     @timeit
     @define_scope(scope_name='losses')
     def _build_loss(self):
-        # Compute logits and weights
-        hidden_size = self.config.hidden_neural_num
-        vocab_size = self._data_embedding.vocab_size
-        data_type = self.config.data_type
+        # adding extra statistics to monitor
+        targets = self.target_seqs
+        correct_prediction = tf.equal(tf.cast(tf.argmax(self._logits, 1), tf.int64), tf.reshape(targets, [-1]))
+        self._accuracy = tf.reduce_mean(tf.cast(correct_prediction, "float"))
+        tf.summary.scalar("accuracy", self._accuracy)
 
-        with tf.variable_scope('softmax'):
-            softmax_w = tf.get_variable("softmax_w", [hidden_size * 2, vocab_size], dtype=data_type)
-            softmax_b = tf.get_variable("softmax_b", [vocab_size], dtype=data_type)
-
-        with tf.variable_scope("logits"):
-            logits = tf.matmul(self._outputs, softmax_w) + softmax_b  # logits shape[time_step, target_num]
-
-        # Computing losses.
-        with tf.variable_scope("loss"):
-            # adding extra statistics to monitor
-            targets = self.target_seqs
-            correct_prediction = tf.equal(tf.cast(tf.argmax(logits, 1), tf.int64), tf.reshape(targets, [-1]))
-            self._accuracy = tf.reduce_mean(tf.cast(correct_prediction, "float"))
-            loss = tf.nn.sparse_softmax_cross_entropy_with_logits(labels=tf.reshape(targets, [-1]), logits=logits)
-            self._cost = tf.reduce_mean(loss)  # loss
-            tf.summary.scalar("accuracy", self._accuracy)
-            tf.summary.scalar("loss", self._cost)
+        loss = tf.nn.sparse_softmax_cross_entropy_with_logits(labels=tf.reshape(targets, [-1]),
+                                                              logits=self._logits)
+        self._loss = tf.reduce_mean(loss)
+        tf.summary.scalar("loss", self._loss)
         pass
 
     def _run_inference(self):
 
         pass
+
+
+class ImageCaptionAttentionModel(BaseModel):
+    """
+    Image Caption Model build with BiRNN and Attention
+    """
+
+    def _build_inputs(self):
+        """
+        build inputs placeholders for computing graph
+        :return:
+        """
