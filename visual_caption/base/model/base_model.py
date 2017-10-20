@@ -6,65 +6,12 @@ from __future__ import unicode_literals  # compatible with python3 unicode codin
 
 import logging
 import os
-import sys
-import time
 from abc import ABCMeta, abstractmethod
-from functools import wraps
 
 import tensorflow as tf
 from tensorflow.contrib.tensorboard.plugins import projector
 
-
-def timeit(f):
-    def timed(*args, **kw):
-        ts = time.time()
-        print('......   begin  {}   ......'.format(f.__name__))
-        result = f(*args, **kw)
-        te = time.time()
-        print('......   finish {}, took: {} sec   ......'.format(f.__name__, te - ts))
-        return result
-
-    return timed
-
-
-def doublewrap(function):
-    """
-    A decorator decorator, allowing to use the decorator to be used without
-    parentheses if not arguments are provided. All arguments must be optional.
-    """
-
-    @wraps(function)
-    def decorator(*args, **kwargs):
-        if len(args) == 1 and len(kwargs) == 0 and callable(args[0]):
-            return function(args[0])
-        else:
-            return lambda wrapee: function(wrapee, *args, **kwargs)
-
-    return decorator
-
-
-@doublewrap
-def define_scope(function, scope_name=None, *args, **kwargs):
-    """
-    A decorator for functions that define TensorFlow operations. The wrapped
-    function will only be executed once. Subsequent calls to it will directly
-    return the result so that operations are added to the graph only once.
-    The operations added by the function live within a tf.variable_scope(). If
-    this decorator is used with arguments, they will be forwarded to the
-    variable scope. The scope name defaults to the name of the wrapped
-    function.
-    """
-    attribute = '_cache_' + function.__name__
-    name = scope_name or function.__name__
-
-    @wraps(function)
-    def decorator(self):
-        if not hasattr(self, attribute):
-            with tf.variable_scope(name, *args, **kwargs):
-                setattr(self, attribute, function(self))
-        return getattr(self, attribute)
-
-    return decorator
+from visual_caption.utils.decorator_utils import define_scope, timeit
 
 
 class BaseModel(object):
@@ -76,17 +23,10 @@ class BaseModel(object):
     def __init__(self, config, data_reader):
 
         self.config = config
-
-        self._data_reader = data_reader
-
-        self._initializer = tf.random_uniform_initializer(
-            minval=-self.config.initializer_scale,
-            maxval=self.config.initializer_scale)
-
-        self._summary_writer = tf.summary.FileWriter(logdir=self.config.log_dir)
-
-        self._summary_list = []
-
+        self.data_reader = data_reader
+        self.global_step = tf.Variable(initial_value=0, trainable=False, name="global_step",
+                                        collections=[tf.GraphKeys.GLOBAL_STEP, tf.GraphKeys.GLOBAL_VARIABLES])
+        self.summary_writer = tf.summary.FileWriter(logdir=self.config.log_dir)
         self._build_model()
 
     def _next_device(self):
@@ -107,7 +47,6 @@ class BaseModel(object):
     @timeit
     def _build_model(self):
         self._get_logger()
-        self._setup_global_step()
         self._build_embeddings()
         self._build_inputs()
         self._build_network()
@@ -115,7 +54,6 @@ class BaseModel(object):
         self._build_optimizer()
         self._build_train_op()
         self._build_summaries()
-        self._build_fetches()
 
     @timeit
     @define_scope(scope_name='embeddings')
@@ -126,20 +64,23 @@ class BaseModel(object):
     @define_scope(scope_name='inputs')
     @abstractmethod
     def _build_inputs(self):
-        # define inputs variables
+        """
+         define placeholders and variables for inputs
+        :return:
+        """
         raise NotImplementedError()
 
     @timeit
-    @define_scope(scope_name='network')
+    @define_scope(scope_name='graph')
     @abstractmethod
-    def _build_network(self):
-        # define deep network of computation graph
+    def _build_graph(self):
+        # build computation graph
         raise NotImplementedError()
 
     @timeit
     @define_scope(scope_name='losses')
     @abstractmethod
-    def _build_loss(self):
+    def _build_losses(self):
         # define loss
         raise NotImplementedError()
 
@@ -160,7 +101,7 @@ class BaseModel(object):
         self._learning_rate = tf.maximum(
             self.config.learning_rate_min,  # min learning rate.
             tf.train.exponential_decay(learning_rate=self.config.learning_initial_rate,
-                                       global_step=self._global_step,
+                                       global_step=self.global_step,
                                        decay_steps=self.config.learning_decay_steps,
                                        decay_rate=self.config.learning_decay_rate))
 
@@ -176,7 +117,7 @@ class BaseModel(object):
         Set up the training ops.
         """
         trainables = tf.trainable_variables()
-        gradients = tf.gradients(self._loss, trainables)
+        gradients = tf.gradients(self.loss, trainables)
 
         with tf.device(self._get_gpu(self.config.num_gpus - 1)):
             clipped_gradients, global_norm = tf.clip_by_global_norm(t_list=gradients,
@@ -185,62 +126,25 @@ class BaseModel(object):
             tf.summary.scalar('global_norm', global_norm)
 
         grads_and_vars = zip(clipped_gradients, trainables)
-        self._train_op = self._optimizer.apply_gradients(grads_and_vars=grads_and_vars,
-                                                         global_step=self._global_step,
+        self.train_op = self._optimizer.apply_gradients(grads_and_vars=grads_and_vars,
+                                                         global_step=self.global_step,
                                                          name='train_step')
 
     @timeit
     @define_scope(scope_name='summaries')
     def _build_summaries(self):
         """Attach a lot of summaries to a Tensor (for TensorBoard visualization)."""
-        for (summary_key, summary_value) in self._summary_list:
-            tf.summary.scalar(summary_key, summary_value)
-            tf.summary.histogram(summary_key, summary_value)
-        self._merged = tf.summary.merge_all()
+        self.summary_merged = tf.summary.merge_all()
         # adding embeddings into projector
         config = projector.ProjectorConfig()
         embed = config.embeddings.add()
         embed.tensor_name = 'token_embeddings'
-        meta_file = os.path.join(self._data_reader.data_config.embedding_dir, "metadata.tsv")
+        meta_file = os.path.join(self.data_reader.data_config.embedding_dir, "metadata.tsv")
         embed.metadata_path = meta_file
-        projector.visualize_embeddings(self._summary_writer, config)
-
-    def _run_epoch(self, sess, num_epoch, mode):
-        """
-        running epoch
-        :param num_epoch: number of epoch
-        :return:
-        """
-        # Create a coordinator and run all QueueRunner objects
-        print("......begin " + mode + " epoch {}.....".format(num_epoch))
-        coord = tf.train.Coordinator()
-        threads = tf.train.start_queue_runners(coord=coord)
-        total_loss = 0.0
-        try:
-            for batch_index in range(5000):
-                start = time.time()
-                global_step = tf.train.global_step(sess, self._global_step)
-                _, batch_loss, batch_summary = sess.run(self._fetches)
-                total_loss = total_loss + batch_loss
-                self.logger.info('global_step={}, batch_loss={}'.format(global_step, batch_loss))
-                self._summary_writer.add_summary(batch_summary, global_step=global_step)
-                if mode == "train":
-                    if global_step % 500 == 0 and global_step > 0:
-                        self.logger.info("epoch={}, batch_index={}, global_step={}, batch_loss={},batch_time={}".
-                                         format(num_epoch, batch_index, global_step, batch_loss, time.time() - start))
-
-        except Exception as e:
-            print(e)
-            coord.request_stop(e)
-        finally:
-            coord.request_stop()  # Stop the threads
-            coord.join(threads)  # Wait for threads to stop
-
-        print("......end " + mode + " epoch {}.....".format(num_epoch))
-        return global_step, total_loss
+        projector.visualize_embeddings(self.summary_writer, config)
 
     @timeit
-    def _save_model(self, sess, global_step):
+    def save_model(self, sess, global_step):
         model_name = self.config.model_name
         checkpoint_dir = self.config.checkpoint_dir
         if not os.path.isdir(checkpoint_dir):
@@ -250,93 +154,28 @@ class BaseModel(object):
         self.logger.info("save model {} at step {}".format(model_name, global_step))
 
     @timeit
-    def _restore_model(self, checkpoint):
-        print(" [*] Reading checkpoint...")
+    def restore(self, sess, checkpoint=None):
+        self._logger(" [*] Reading checkpoint...")
         model_name = self.config.model_name
         if checkpoint is None:
             checkpoint = tf.train.latest_checkpoint(self.config.checkpoint_dir)
-
         if checkpoint:
-            print("restoring model parameters from {}".format(checkpoint.model_checkpoint_path))
+            self._logger("restoring model parameters from {}".format(checkpoint.model_checkpoint_path))
             all_vars = tf.global_variables()
             model_vars = [k for k in all_vars if k.name.startswith(model_name)]
-            self._saver.restore(self.sess, checkpoint)
-            print("model {} restored".format(model_name))
+            self._saver.restore(sess, checkpoint)
+            self._logger("model {} restored".format(model_name))
             return True
         else:
             return False
 
     @timeit
     def _get_logger(self):
-        logger = logging.getLogger("logger")
+        logger = logging.getLogger('tensorflow')
         logger.setLevel(logging.DEBUG)
         logging.basicConfig(format="%(message)s", level=logging.DEBUG)
-        self.logger = logger
+        self._logger = logger
 
-    @timeit
-    def _setup_global_step(self):
-        """Sets up the global step Tensor."""
-        global_step = tf.Variable(
-            initial_value=0,
-            name="global_step",
-            trainable=False,
-            collections=[tf.GraphKeys.GLOBAL_STEP, tf.GraphKeys.GLOBAL_VARIABLES])
 
-        self._global_step = global_step
-
-    def run_train(self):
-        print("......begin training......")
-        with tf.Session(config=self.config.sess_config) as sess:
-            self._summary_writer.add_graph(sess.graph)
-            epoch_size = self.config.max_max_epoch
-            checkpoint_dir = self.config.checkpoint_dir
-            saver = tf.train.Saver()
-
-            # CheckPoint State
-            checkpoint = tf.train.get_checkpoint_state(checkpoint_dir)
-            if checkpoint:
-                self.logger.info("Loading model parameters from {}".format(checkpoint.model_checkpoint_path))
-                saver.restore(sess, tf.train.latest_checkpoint(checkpoint_dir))
-            else:
-                self.logger.info("Created model with fresh parameters.")
-                init_op = tf.group(tf.global_variables_initializer(), tf.local_variables_initializer())
-                sess.run(init_op)
-
-            # Create a coordinator and run all QueueRunner objects
-            coord = tf.train.Coordinator()
-            threads = tf.train.start_queue_runners(sess, coord)
-            train_fetches = self._build_fetches()
-            try:
-                start = time.time()
-                while not coord.should_stop():
-                    global_step = tf.train.global_step(sess, self._global_step)
-                    _, batch_loss, batch_summary = sess.run(fetches=train_fetches)
-                    self._summary_writer.add_summary(batch_summary, global_step=global_step)
-            except tf.errors.OutOfRangeError:
-                print("Done training after reading all data")
-            except Exception as exception:
-                print(exception)
-            except:
-                print("Unexpected error:", sys.exc_info()[0])
-                raise
-            finally:
-                # finalise
-                coord.request_stop()  # Stop the threads
-                coord.join(threads)  # Wait for threads to stop
-
-            self._summary_writer.close()
-        print("......end training.....")
-
-    @abstractmethod
-    def _run_test(self, sess, global_step):
-        raise NotImplementedError()
-
-    @abstractmethod
-    def _run_validation(self, sess, global_step):
-        raise NotImplementedError()
-
-    @abstractmethod
-    def _run_inference(self):
-        raise NotImplementedError()
 
     pass

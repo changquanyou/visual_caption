@@ -8,6 +8,9 @@ import os
 import time
 
 import tensorflow as tf
+import os
+from pathlib import Path
+
 
 # BATCH_SIZE = None
 max_grad_norm = 5
@@ -19,17 +22,20 @@ dropout_keep_prob = 0.6
 initializer_scale = 0.08
 early_stopping = 100
 
-# base_dir = "/home/liuxiaoming/data/visual_caption/"
-base_dir = "/home/liuxiaoming/data/visual_caption/"
+home = str(Path.home())
+
+BASE_DIR = os.path.join(home, 'workspace')  # base running dir for all models
+# PROJECT_DIR  = os.path.join()
+
 
 class BaseConfig(object):
     def __init__(self, model_name, mode):
         self.model_name = model_name
         self.mode = mode  # train,test or validation
 
-        self.base_dir = base_dir # base dir for model
+        self.base_dir = BASE_DIR # base dir for model
         self.model_dir = os.path.join(self.base_dir, self.model_name) # for
-        self.module_dir = os.path.join(base_dir, self.model_name)
+        # self.module_dir = os.path.join(self.base_dir, self.model_name)
 
         # number of GPUs
         self.num_gpus = 1
@@ -41,7 +47,6 @@ class BaseConfig(object):
 
         # leaning rate for training
         self.learning_rate_min = 0.01,  # min learning rate.
-
         self.learning_initial_rate = 0.2
         self.learning_rate_decay_factor = 0.5
         self.learning_decay_steps = 10000
@@ -56,9 +61,9 @@ class BaseConfig(object):
         self.clip_gradients = 5.0
 
         # for log and checkpoint
-        self.log_dir = os.path.join(self.module_dir, "log")
+        self.log_dir = os.path.join(self.model_dir, "log")
         self.log_dir = os.path.join(self.log_dir, str(time.time()))
-        self.checkpoint_dir = os.path.join(self.module_dir, "checkpoint")
+        self.checkpoint_dir = os.path.join(self.model_dir, "checkpoint")
 
         # for session and gpu
         config = tf.ConfigProto()
