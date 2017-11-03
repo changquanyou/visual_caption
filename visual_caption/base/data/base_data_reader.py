@@ -4,27 +4,91 @@ from __future__ import division
 from __future__ import print_function
 from __future__ import unicode_literals  # compatible with python3 unicode coding
 
+import os
 from abc import ABCMeta, abstractmethod
+
+import tensorflow as tf
+from tensorflow.contrib.data import Iterator
 
 
 class BaseDataReader(object):
-    """
-    Base Abstract Data Reader Class of TFRecords
-    """
     __metaclass__ = ABCMeta
 
     def __init__(self, data_config):
-        self.data_config = data_config
+        self._data_config = data_config
 
-    def build_data_inputs(self):
-        if self.data_config.mode == "train":
-            self.data_inputs = self._build_data_inputs(data_dir=self.data_config.train_data_dir)
-        elif self.data_config.mode == "test":
-            self.data_inputs = self._build_data_inputs(data_dir=self.data_config.test_data_dir)
-        elif self.data_config.mode == "validation":
-            self.data_inputs = self._build_data_inputs(data_dir=self.data_config.validation_data_dir)
-        return self.data_inputs
+        # default batch_size from data reader config
+        self._batch_size = self._data_config.reader_batch_size
+        self._build_context_and_feature()
+        self.data_iterator = None
+        pass
+
+    def get_data_iterator(self):
+        """
+        get a data iterator for all dataset including train,valid and test
+        :return:
+        """
+        dataset = tf.contrib.data.TFRecordDataset(self._data_config.train_data_dir)
+        self.data_iterator = Iterator.from_structure(
+            output_types=dataset.output_types,
+            output_shapes=dataset.output_shapes
+        )
+        return self.data_iterator
+
+    def get_next_batch(self, batch_size):
+        self._batch_size = batch_size
+        next_batch = self.data_iterator.get_next()
+        return next_batch
+
+    def get_train_init_op(self):
+        _train_dataset = self._get_dataset(data_dir=self._data_config.train_data_dir)
+        initializer = self.data_iterator.make_initializer(_train_dataset)
+        return initializer
+
+    def get_valid_init_op(self):
+        _valid_dataset = self._get_dataset(data_dir=self._data_config.valid_data_dir)
+        initializer = self.data_iterator.make_initializer(_valid_dataset)
+        return initializer
+
+    def get_test_init_op(self):
+        _test_dataset = self._get_dataset(data_dir=self._data_config.test_data_dir)
+        initializer = self.data_iterator.make_initializer(_test_dataset)
+        return initializer
+
+    def _get_dataset(self, data_dir):
+        """
+        get TFRecordDataset from give data_dir and mapping them into dataset
+        :param data_dir:
+        :return:
+        """
+        filenames = os.listdir(data_dir)
+        data_files = []
+        for filename in filenames:
+            data_file = os.path.join(data_dir, filename)
+            data_files.append(data_file)
+        dataset = tf.contrib.data.TFRecordDataset(data_files)
+        # parsing tf_record
+        dataset = dataset.map(self._parse_tf_example,
+                              num_threads=4,
+                              output_buffer_size=100)
+        # mapping dataset
+        dataset = self._mapping_dataset(dataset)  # mapping to target format
+        return dataset
 
     @abstractmethod
-    def _build_data_inputs(self, data_dir):
+    def _mapping_dataset(self):
+        """mapping data to necessary format  """
         raise NotImplementedError()
+        pass
+
+    @abstractmethod
+    def _build_context_and_feature(self):
+        """used by tfrecord parsing"""
+        raise NotImplementedError()
+        pass
+
+    @abstractmethod
+    def _parse_tf_example(self):
+        """parsing tfrecord parsing"""
+        raise NotImplementedError()
+        pass
