@@ -6,6 +6,8 @@ from __future__ import unicode_literals  # compatible with python3 unicode codin
 
 from abc import ABCMeta, abstractmethod
 
+from visual_caption.utils.decorator_utils import timeit
+
 
 class BaseRunner(object):
     """
@@ -13,14 +15,25 @@ class BaseRunner(object):
     """
     __metaclass__ = ABCMeta
 
+    @timeit
+    @abstractmethod
+    def _internal_eval(self, model, sess):
+        raise NotImplementedError()
+
+    @timeit
     @abstractmethod
     def train(self):
         raise NotImplementedError()
+        pass
 
+    @timeit
     @abstractmethod
-    def test(self):
+    def valid(self):
         raise NotImplementedError()
+        pass
 
+    @timeit
     @abstractmethod
-    def infer(self):
+    def infer(self, sess, dataset):
         raise NotImplementedError()
+        pass
