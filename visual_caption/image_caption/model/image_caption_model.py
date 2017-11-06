@@ -4,157 +4,391 @@ from __future__ import division
 from __future__ import print_function
 from __future__ import unicode_literals  # compatible with python3 unicode coding
 
-import sys
-import time
-
 import tensorflow as tf
+from tensorflow.contrib import seq2seq
+from tensorflow.python.layers.core import Dense
+from tensorflow.python.ops.rnn_cell_impl import GRUCell, DropoutWrapper
 
-from visual_caption.base.model.base_model import BaseModel, timeit, define_scope
+from visual_caption.base.model.base_model import BaseModel
 from visual_caption.image_caption.data.data_embedding import ImageCaptionDataEmbedding
+from visual_caption.utils.decorator_utils import timeit, define_scope
 
 
 class ImageCaptionModel(BaseModel):
-    def __init__(self, config, data_reader):
-        super().__init__(config=config, data_reader=data_reader)
+    def __init__(self, model_config, data_reader, mode):
+        super(ImageCaptionModel, self).__init__(
+            model_config=model_config,
+            data_reader=data_reader,
+            mode=mode
+        )
 
     @timeit
     @define_scope(scope_name='embeddings')
     def _build_embeddings(self):
-
         self._data_embedding = ImageCaptionDataEmbedding()
         self._embeddings = tf.Variable(self._data_embedding.token_embedding_matrix,
-                                       dtype=self.config.data_type,
-                                       trainable=self.config.train_embeddings,
+                                       dtype=self.model_config.data_type,
+                                       trainable=self.model_config.train_embeddings,
                                        name='token_embeddings')
         pass
 
     @timeit
     @define_scope(scope_name='inputs')
     def _build_inputs(self):
-        # input images and seqs batch
-        batch_size = self.data_reader.data_config.batch_size
-        data_config = self.data_reader.data_config
+        data_type = self.model_config.data_type
+        if self.mode == tf.contrib.learn.ModeKeys.INFER:
+            self.image_ids = tf.placeholder(dtype=tf.int32, shape=[None], name='image_ids')
+            self.input_image_embeddings = tf.placeholder(dtype=data_type,
+                                                         shape=[None, 4096],
+                                                         name="image_inputs_embeddings")
 
-        train_inputs = self.data_reader._build_data_inputs(data_config.train_data_dir)
-        # test_inputs = self._data_reader._build_data_inputs(data_config.test_data_dir)
-        validation_inputs = self.data_reader._build_data_inputs(data_config.validation_data_dir)
+            self.input_seqs = tf.placeholder(dtype=tf.int32, shape=[None, None], name='input_seqs')
+            self.target_seqs = tf.placeholder(dtype=tf.int32, shape=[None, None], name='target_seqs')
 
-        self.input_image_embeddings = tf.placeholder(dtype=tf.float32,
-                                                     shape=[batch_size, 4096],
-                                                     name='image_embeddings')
-        if self.config.mode == 'train':
-            images_batch, input_seqs_batch, target_seqs_batch, input_mask_batch = train_inputs
-        # elif self.config.mode == 'test':
-        #     images_batch, input_seqs_batch, target_seqs_batch, input_mask_batch = test_inputs
-        elif self.config.mode == 'validation':
-            images_batch, input_seqs_batch, target_seqs_batch, input_mask_batch = validation_inputs
+            self.input_lengths = tf.placeholder(dtype=tf.int32, shape=[None], name='input_lengths')
+            self.target_lengths = tf.placeholder(dtype=tf.int32, shape=[None], name='target_lengths')
+        else:
 
-        self.input_image_embeddings = images_batch
+            (image_ids, image_features, captions, targets,
+             caption_ids, target_ids, caption_lengths, target_lengths) = self.next_batch
+
+            self.input_image_embeddings = image_features
+            self.image_ids = image_ids
+
+            self.input_seqs = caption_ids
+            self.target_seqs = target_ids
+
+            self.input_lengths = caption_lengths
+            self.target_lengths = target_lengths
+
         self.input_seq_embeddings = tf.nn.embedding_lookup(params=self._embeddings,
-                                                           ids=input_seqs_batch,
+                                                           ids=self.input_seqs,
                                                            name="input_seqs_embeddings")
-        self.target_seqs = target_seqs_batch
-        self.input_masks = input_mask_batch
+        self.target_seq_embeddings = tf.nn.embedding_lookup(params=self._embeddings,
+                                                            ids=self.target_seqs,
+                                                            name="input_seqs_embeddings")
+        # replace default model config batch_size with data pipeline batch_size
+        self.batch_size = tf.shape(self.input_seqs)[0]
+        # Maximum decoder time_steps in current batch
+        self.max_seq_length = tf.reduce_max(self.target_lengths)
+        pass
 
-    def __create_rnn_cell(self):
-        # This RNN cell has biases and outputs tanh(new_c) * sigmoid(o), but the
-        # modified RNN in the "Show and Tell" paper has no biases and outputs
-        # new_c * sigmoid(o).
-        rnn_cell = tf.contrib.rnn.GRUCell(num_units=self.config.hidden_neural_num)
-        if self.config.mode == "train":
-            rnn_cell = tf.contrib.rnn.DropoutWrapper(rnn_cell,
-                                                     input_keep_prob=self.config.dropout_keep_prob,
-                                                     output_keep_prob=self.config.dropout_keep_prob)
+    @timeit
+    @define_scope(scope_name='graph')
+    def _build_graph(self):
+        self._build_encoder()
+        self._build_decoder()
+
+    @timeit
+    def __create_rnn_cell(self, num_units):
+        rnn_cell = GRUCell(num_units=num_units)
+        if self.mode == "train":
+            rnn_cell = DropoutWrapper(
+                rnn_cell,
+                input_keep_prob=self.model_config.dropout_keep_prob,
+                output_keep_prob=self.model_config.dropout_keep_prob)
         return rnn_cell
 
     @timeit
-    @define_scope(scope_name='network')
-    def _build_network(self):
-        layer_num = self.config.hidden_layer_num
-        data_type = self.config.data_type
-        hidden_neural_num = self.config.hidden_neural_num
+    @define_scope(scope_name='encoder')
+    def _build_encoder(self):
 
-        rnn_cell = self.__create_rnn_cell()
-        # Feed the image embeddings to set the initial LSTM state.
-        zero_state = rnn_cell.zero_state(
-            batch_size=self.input_image_embeddings.get_shape()[0], dtype=tf.float32)
+        data_type = self.model_config.data_type
+        num_hidden_unit = self.model_config.num_hidden_unit
+
+        # Feed the image embeddings to set the initial RNN state.
+        rnn_cell = self.__create_rnn_cell(num_hidden_unit)
+        zero_state = rnn_cell.zero_state(batch_size=self.batch_size,
+                                         dtype=tf.float32)
         _, initial_state = rnn_cell(self.input_image_embeddings, zero_state)
 
-        # stack multi layers RNN
-        # cells_forward = tf.contrib.rnn.MultiRNNCell(cells=[self.__create_rnn_cell() for _ in range(layer_num)],
-        #                                             state_is_tuple=True)
-        # cells_backward = tf.contrib.rnn.MultiRNNCell(cells=[self.__create_rnn_cell() for _ in range(layer_num)],
-        #                                              state_is_tuple=True)
+        # forward RNN cell
+        cell_fw = self.__create_rnn_cell(num_hidden_unit)
+        # backward RNN cell
+        cell_bw = self.__create_rnn_cell(num_hidden_unit)
 
-        if self.config.mode == "inference":
-            # In inference mode, use concatenated states for convenient feeding and
-            # fetching.
-            tf.concat(axis=1, values=initial_state, name="initial_state")
-            # Placeholder for feeding a batch of concatenated states.
-            state_feed = tf.placeholder(dtype=tf.float32,
-                                        shape=[None, sum(rnn_cell.state_size)],
-                                        name="state_feed")
-            state_tuple = tf.split(value=state_feed, num_or_size_splits=2, axis=1)
-            # Run a single run step.
-            outputs, state_tuple = rnn_cell(inputs=tf.squeeze(self.seq_embeddings, axis=[1]),
-                                            state=state_tuple)
-            # Concatentate the resulting state.
-            tf.concat(axis=1, values=state_tuple, name="state")
-        else:
-            sequence_lengths = tf.reduce_sum(self.input_masks, 1)
-            cell_fw = self.__create_rnn_cell()
-            cell_bw = self.__create_rnn_cell()
-            # cell_fw = cells_forward
-            # cell_bw = cells_backward
-
-            outputs, outputs_states = tf.nn.bidirectional_dynamic_rnn(
-                cell_fw=cell_fw,
-                cell_bw=cell_bw,
-                inputs=self.input_seq_embeddings,
-                sequence_length=sequence_lengths,
-                initial_state_fw=initial_state,
-                initial_state_bw=initial_state,
-                dtype=data_type
-            )
-        # outputs is a length T list of output vectors, which is [batch_size, 2 * hidden_size]
-        # [time][batch][cell_fw.output_size + cell_bw.output_size]
-        self._outputs = tf.reshape(tf.concat(outputs, 1), [-1, hidden_neural_num * 2])
-        # output has size: [T, size * 2]
-
-        # Compute logits and weights
-        hidden_size = self.config.hidden_neural_num
-        vocab_size = self._data_embedding.vocab_size
-        data_type = self.config.data_type
-
-        with tf.variable_scope('logits'):
-            softmax_w = tf.get_variable("softmax_w", [hidden_size * 2, vocab_size], dtype=data_type)
-            softmax_b = tf.get_variable("softmax_b", [vocab_size], dtype=data_type)
-            self.logits = tf.matmul(self._outputs, softmax_w) + softmax_b  # logits shape[time_step, target_num]
-
+        image_embedding_seqs = tf.expand_dims(input=self.input_image_embeddings, axis=1)
+        image_embedding_seqs = tf.tile(image_embedding_seqs,
+                                       multiples=[1, self.max_seq_length, 1])
+        image_seq_inputs = tf.concat(values=[self.input_seq_embeddings, image_embedding_seqs],
+                                     axis=-1,
+                                     name="image_seq_inputs")
+        # inputs = self.input_seq_embeddings
+        inputs = image_seq_inputs
+        outputs, outputs_states = tf.nn.bidirectional_dynamic_rnn(
+            cell_fw=cell_fw,
+            cell_bw=cell_bw,
+            inputs=inputs,
+            sequence_length=self.input_lengths,
+            initial_state_fw=initial_state,
+            initial_state_bw=initial_state,
+            dtype=data_type
+        )
+        self.encoder_outputs = tf.concat(outputs, -1)
+        self.encoder_final_state = tf.concat(outputs_states, -1)
 
     @timeit
-    @define_scope(scope_name='losses')
-    def _build_loss(self):
-        # adding extra statistics to monitor
-        targets = self.target_seqs
-        correct_prediction = tf.equal(tf.cast(tf.argmax(self.logits, 1), tf.int64), tf.reshape(targets, [-1]))
-        self.accuracy = tf.reduce_mean(tf.cast(correct_prediction, "float"))
-        tf.summary.scalar("accuracy", self.accuracy)
+    @define_scope(scope_name='decoder')
+    def _build_decoder(self):
 
-        loss = tf.nn.sparse_softmax_cross_entropy_with_logits(labels=tf.reshape(targets, [-1]),
-                                                              logits=self.logits)
-        self.loss = tf.reduce_mean(loss)
-        tf.summary.scalar("loss", self.loss)
+        encoder_outputs = self.encoder_outputs
+        encoder_final_state = self.encoder_final_state
+
+        target_seq_embeddings = self.target_seq_embeddings
+        target_lengths = self.target_lengths
+
+        batch_size = self.batch_size
+        num_units = self.model_config.num_hidden_unit
+        vocab_size = self._data_embedding.vocab_size
+
+        decoder_cell = self.__create_rnn_cell(num_units * 2)
+        decoder_initial_state = encoder_final_state
+
+        # for train and eval
+        outputs, output_states, output_lengths = self._decoder_train_layer(
+            encoder_outputs=encoder_outputs,
+            decoder_cell=decoder_cell, decoder_initial_state=decoder_initial_state,
+            target_lengths=target_lengths, target_seq_embeddings=target_seq_embeddings,
+            vocab_size=vocab_size, batch_size=batch_size)
+
+        # for inference
+        predict_outputs, predict_output_states, predict_output_lengths = self._decoder_predict_layer(
+            encoder_outputs=encoder_outputs,
+            decoder_cell=decoder_cell,
+            decoder_initial_state=decoder_initial_state,
+            target_lengths=target_lengths,
+            vocab_size=vocab_size,
+            batch_size=batch_size
+        )
+
+        self.decoder_outputs = outputs.rnn_output
+        self.decoder_predictions = outputs.sample_id
+
+        self.predict_outputs = predict_outputs.rnn_output
+        self.predict_predictions = predict_outputs.sample_id
         pass
 
+    def _decoder_train_layer(self,
+                             encoder_outputs,
+                             decoder_cell,
+                             decoder_initial_state,
+                             target_lengths,
+                             target_seq_embeddings,
+                             vocab_size,
+                             batch_size):
+        # if attention, wrap cell with attention mechanism
+        if self.model_config.attention_mechanism:
+            decoder_cell, decoder_initial_state = self._attention_cell(
+                decoder_cell=decoder_cell,
+                encoder_outputs=encoder_outputs,
+                decoder_initial_state=decoder_initial_state,
+                batch_size=batch_size
+            )
 
-class ImageCaptionAttentionModel(BaseModel):
-    """
-    Image Caption Model build with BiRNN and Attention
-    """
+        train_helper = seq2seq.TrainingHelper(inputs=target_seq_embeddings,
+                                              sequence_length=target_lengths,
+                                              name='training_helper')
+        # Output projection layer to convert cell_outputs to logits
+        output_layer = Dense(vocab_size, name='output_projection')
+        train_decoder = seq2seq.BasicDecoder(cell=decoder_cell,
+                                             helper=train_helper,
+                                             initial_state=decoder_initial_state,
+                                             output_layer=output_layer)
+        # for train and eval
+        max_decoder_length = tf.reduce_max(target_lengths)
+        outputs, output_states, output_lengths = seq2seq.dynamic_decode(
+            decoder=train_decoder, maximum_iterations=max_decoder_length
+        )
+        return outputs, output_states, output_lengths
 
-    def _build_inputs(self):
-        """
-        build inputs placeholders for computing graph
-        :return:
-        """
+    def _attention_cell(self,
+                        decoder_cell,
+                        encoder_outputs,
+                        decoder_initial_state,
+                        batch_size):
+        source_sequence_length = self.input_lengths
+        dtype = self.encoder_outputs.dtype
+
+        attention_mechanism = create_attention_mechanism(
+            attention_option=self.model_config.attention_mechanism,
+            num_units=self.model_config.num_attention_unit,
+            memory=encoder_outputs,
+            source_sequence_length=source_sequence_length,
+            mode=self.mode
+        )
+
+        attention_cell = seq2seq.AttentionWrapper(
+            cell=decoder_cell,
+            attention_mechanism=attention_mechanism,
+            attention_layer_size=self.model_config.num_attention_layer,
+            name="decoder_attention_cell"
+        )
+        _state = attention_cell.zero_state(dtype=dtype,
+                                           batch_size=batch_size)
+        attention_cell_initial_state = _state.clone(cell_state=decoder_initial_state)
+
+        return attention_cell, attention_cell_initial_state
+
+    def _decoder_predict_layer(self,
+                               encoder_outputs,
+                               decoder_cell,
+                               decoder_initial_state,
+                               target_lengths,
+                               batch_size,
+                               vocab_size):
+
+        token2index = self._data_embedding.token2index
+        token_begin = self.model_config.data_config.token_begin
+        token_end = self.model_config.data_config.token_end
+
+        start_tokens = [token2index[token_begin]]
+        end_token = token2index[token_end]
+
+        decoder_embedding = self._embeddings
+        beam_width = self.model_config.beam_width
+        if beam_width > 0:  # batch_tile for decoder_cell and states
+            decoder_cell, decoder_initial_state = self._beamsearch_attention_cell(
+                decoder_cell=decoder_cell,
+                encoder_outputs=encoder_outputs,
+                decoder_initial_state=decoder_initial_state,
+                beam_width=beam_width,
+                batch_size=batch_size
+            )
+            # for beam search
+            start_tokens = tf.tile(start_tokens, [batch_size])
+            predicting_decoder = seq2seq.BeamSearchDecoder(
+                cell=decoder_cell,
+                embedding=decoder_embedding,
+                start_tokens=start_tokens,
+                end_token=end_token,
+                initial_state=decoder_initial_state,
+                beam_width=beam_width,
+                output_layer=Dense(vocab_size, use_bias=False),
+                length_penalty_weight=0.0)
+
+        else:
+            if self.model_config.attention_mechanism:
+                decoder_cell, decoder_initial_state = self._attention_cell(
+                    decoder_cell=decoder_cell,
+                    encoder_outputs=encoder_outputs,
+                    decoder_initial_state=decoder_initial_state,
+                    batch_size=batch_size
+                )
+            # for greedy search Helper
+            helper = seq2seq.GreedyEmbeddingHelper(
+                embedding=decoder_embedding,
+                start_tokens=tf.fill([batch_size], token2index[token_begin]),
+                end_token=end_token)
+            # Decoder
+            predicting_decoder = seq2seq.BasicDecoder(
+                cell=decoder_cell,
+                helper=helper,
+                initial_state=decoder_initial_state,
+                output_layer=Dense(vocab_size, use_bias=False)
+            )
+
+        # for predict outputs
+        max_decoder_length = tf.reduce_max(target_lengths)
+        outputs, output_states, output_lengths = seq2seq.dynamic_decode(
+            decoder=predicting_decoder, maximum_iterations=max_decoder_length,
+            scope="decoder_predict_outputs")
+        return outputs, output_states, output_lengths
+
+    def _beamsearch_attention_cell(self,
+                                   encoder_outputs,
+                                   decoder_cell,
+                                   decoder_initial_state,
+                                   beam_width,
+                                   batch_size):
+        true_batch_size = batch_size
+        dtype = self.encoder_outputs.dtype
+
+        tiled_sequence_length = seq2seq.tile_batch(
+            self.input_lengths, multiplier=beam_width)
+        tiled_encoder_outputs = seq2seq.tile_batch(
+            encoder_outputs, multiplier=beam_width)
+
+        if self.model_config.attention_mechanism:
+            attention_mechanism = create_attention_mechanism(
+                attention_option=self.model_config.attention_mechanism,
+                num_units=self.model_config.num_attention_unit,
+                memory=tiled_encoder_outputs,
+                source_sequence_length=tiled_sequence_length,
+                mode=self.mode
+            )
+            #
+            decoder_cell = seq2seq.AttentionWrapper(
+                cell=decoder_cell,
+                attention_mechanism=attention_mechanism,
+                attention_layer_size=self.model_config.num_attention_layer,
+                name="decoder_attention_cell"
+            )
+
+        _state = decoder_cell.zero_state(
+            dtype=dtype, batch_size=true_batch_size * beam_width)
+
+        tiled_decoder_initial_state = seq2seq.tile_batch(
+            decoder_initial_state, multiplier=beam_width)
+        decoder_initial_state = tiled_decoder_initial_state
+
+        return decoder_cell, decoder_initial_state
+        pass
+
+    @timeit
+    @define_scope(scope_name="losses")
+    def _build_loss(self):
+        # Compute logits and weights
+
+        # masks: masking for valid and padded time steps, [batch_size, max_time_step + 1]
+        weights = tf.sequence_mask(lengths=self.target_lengths,
+                                   maxlen=self.max_seq_length,
+                                   dtype=self.decoder_outputs.dtype,
+                                   name='masks')
+        # _output_layer = Dense(vocab_size, name='output_layer')
+        with tf.variable_scope('output'):
+            self.logits = self.decoder_outputs
+            batch_loss = seq2seq.sequence_loss(logits=self.logits,
+                                               targets=self.target_seqs,
+                                               weights=weights)
+            tf.losses.add_loss(batch_loss)
+            total_loss = tf.losses.get_total_loss()
+            self.loss = batch_loss
+            self.total_loss = total_loss
+
+            # Add summaries.
+            tf.summary.scalar("batch_loss", batch_loss)
+            tf.summary.scalar("total_loss", total_loss)
+
+            correct_prediction = tf.equal(self.decoder_predictions, self.target_seqs)
+            self.accuracy = tf.reduce_mean(tf.cast(correct_prediction, "float"))
+            tf.summary.scalar("accuracy", self.accuracy)
+
+
+def create_attention_mechanism(attention_option, num_units, memory,
+                               source_sequence_length, mode):
+    """Create attention mechanism based on the attention_option."""
+    del mode  # unused
+
+    # Mechanism
+    if attention_option == "luong":
+        attention_mechanism = seq2seq.LuongAttention(
+            num_units, memory, memory_sequence_length=source_sequence_length)
+    elif attention_option == "scaled_luong":
+        attention_mechanism = seq2seq.LuongAttention(
+            num_units,
+            memory,
+            memory_sequence_length=source_sequence_length,
+            scale=True)
+    elif attention_option == "bahdanau":
+        attention_mechanism = seq2seq.BahdanauAttention(
+            num_units, memory, memory_sequence_length=source_sequence_length)
+    elif attention_option == "normed_bahdanau":
+        attention_mechanism = seq2seq.BahdanauAttention(
+            num_units,
+            memory,
+            memory_sequence_length=source_sequence_length,
+            normalize=True)
+    else:
+        raise ValueError("Unknown attention option %s" % attention_option)
+
+    return attention_mechanism

@@ -8,9 +8,9 @@ import os
 
 from visual_caption.base.data.base_data_config import BaseDataConfig
 
-BEGIN_TOKEN = "<S>"
-END_TOKEN = "</S>"
-UNKNOWN_TOKEN = "<UNKNOWN>"
+TOKEN_BEGIN = "<S>"
+TOKEN_END = "</S>"
+TOKEN_UNKNOWN = "<UNKNOWN>"
 
 MODEL_NAME = 'image_caption'
 MODE = 'train'
@@ -57,11 +57,13 @@ class ImageCaptionDataConfig(BaseDataConfig):
         word2vec_file_name = "word2vec_" + str(self.embedding_dim_size) + ".model"
         self.word2vec_model = os.path.join(self.embedding_dir, word2vec_file_name)
 
+        self.vocab_file = os.path.join(self.embedding_dir,"vocab.txt")
+
         # for encoder-decoder model
         self.seq_max_length = 100
-        self.unknown_token = UNKNOWN_TOKEN
-        self.begin_token = BEGIN_TOKEN
-        self.end_token = END_TOKEN
+        self.token_unknown = TOKEN_UNKNOWN
+        self.token_begin = TOKEN_BEGIN
+        self.token_end = TOKEN_END
 
         # for tfrecord format data
         # Name of the SequenceExample context feature containing image data.

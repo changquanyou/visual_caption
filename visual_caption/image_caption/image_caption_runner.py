@@ -4,11 +4,10 @@ from __future__ import division
 from __future__ import print_function
 from __future__ import unicode_literals  # compatible with python3 unicode coding
 
-import logging
-import sys
 import time
 
 import tensorflow as tf
+from tensorflow.contrib.learn import ModeKeys
 
 from visual_caption.base.base_runner import BaseRunner
 from visual_caption.image_caption.data.data_config import ImageCaptionDataConfig
@@ -20,87 +19,135 @@ from visual_caption.utils.decorator_utils import timeit
 
 class ImageCaptionRunner(BaseRunner):
     def __init__(self):
-        self.model_name = 'image_caption'
-        self.get_logger()
+        super(ImageCaptionRunner, self).__init__()
+
+        data_config = ImageCaptionDataConfig()
+        self.data_reader = ImageCaptionDataReader(data_config=data_config)
+        self.model_config = ImageCaptionConfig(data_config=data_config,
+                                               model_name=data_config.model_name)
         pass
-
-    def run_epoch(self, sess, model):
-        # Create a coordinator and run all QueueRunner objects
-        coord = tf.train.Coordinator()
-        threads = tf.train.start_queue_runners(sess, coord)
-        fetches = [model.accuracy, model.loss, model.logits, model.summary_merged, model.train_op]
-        try:
-            start = time.time()
-            # batch_count = 0
-            while not coord.should_stop():
-                global_step = tf.train.global_step(sess, model.global_step)
-                accuracy, loss, logits, summaries, _ = sess.run(fetches=fetches)
-                model.summary_writer.add_summary(summaries, global_step=global_step)
-                # batch_count += 1
-                if global_step % 100 == 0 and global_step > 0:
-                    last = time.time() - start
-                    print('global_step={}, accuracy={}, loss={}, time={}'.format(global_step, accuracy,
-                                                                                 loss, last))
-                if model.config.mode == 'train':
-                    if global_step % 10000 == 0 and global_step > 0:
-                        model.save_model(global_step=global_step)
-                        last = time.time() - start
-                        print('global_step={}, loss={}, time={}'.format(global_step, loss, last))
-
-        except tf.errors.OutOfRangeError:
-            print("Done training after reading all data")
-        except Exception as exception:
-            print("Exception:{}".format(exception))
-        except:
-            print("Unexpected error:", sys.exc_info()[0])
-            raise
-        finally:
-            # finalise
-            coord.request_stop()  # Stop the threads
-            coord.join(threads)  # Wait for threads to stop
 
     @timeit
     def train(self):
-        print("......begin training......")
-        train_data_config = ImageCaptionDataConfig(model_name=self.model_name)
+        model = ImageCaptionModel(model_config=self.model_config,
+                                  data_reader=self.data_reader,
+                                  mode=ModeKeys.TRAIN)
 
-        model_config = ImageCaptionConfig(model_name=self.model_name, mode='train')
+        fetches = [model.summary_merged, model.loss, model.accuracy, model.train_op, model.input_seqs]
+        format_string = "{0}: epoch={1:2d}, batch={2:6d}, step={3:6d}, loss={4:.6f}, acc={5:.6f}, elapsed={6:.6f}"
+        with tf.Session(config=self.model_config.sess_config) as sess:
+            model.summary_writer.add_graph(sess.graph)
+            if not model.restore_model(sess=sess):
+                model.logger.info("Created model with fresh parameters.")
+                init_op = tf.group(tf.local_variables_initializer(),
+                                   tf.global_variables_initializer())
+                sess.run(init_op)
+            sess.run(tf.tables_initializer())
+            train_init_op = self.data_reader.get_train_init_op()
+            begin = time.time()
 
-        with tf.Graph().as_default(), tf.Session(config=model_config.sess_config) as sess:
-            initializer = tf.random_uniform_initializer(-model_config.initializer_scale,
-                                                        model_config.initializer_scale)
-            with tf.variable_scope(model_config.model_name, reuse=None, initializer=initializer):
-                train_data_reader = ImageCaptionDataReader(data_config=train_data_config)
-                model = ImageCaptionModel(config=model_config,
-                                          data_reader=train_data_reader)
-                # CheckPoint State
-                checkpoint_state = tf.train.get_checkpoint_state(model.config.checkpoint_dir)
-                if checkpoint_state:
-                    self.logger.info("Loading model parameters from {}".format(checkpoint_state.model_checkpoint_path))
-                    model.restore(sess, tf.train.latest_checkpoint(model.config.checkpoint_dir))
-                else:
-                    self.logger.info("Created model with fresh parameters.")
-                    init_op = tf.group(tf.global_variables_initializer(), tf.local_variables_initializer())
-                    sess.run(init_op)
+            # running first internal evaluation
+            max_acc = self._internal_eval(model=model, sess=sess)
+            global_step = tf.train.global_step(sess, model.global_step_tensor)
+            for epoch in range(model.model_config.max_max_epoch):
+                sess.run(train_init_op)  # initial train data options
+                step_begin = time.time()
+                batch = 0
+                while True:  # train each batch in a epoch
+                    try:
+                        result_batch = sess.run(fetches)  # run training step
 
-                self.run_epoch(sess, model)
+                        global_step = tf.train.global_step(sess, model.global_step_tensor)
+                        # display and summarize training result
+                        if global_step % model.model_config.display_and_summary_step == 0:
+                            batch_summary, loss, acc, _, phrases = result_batch
+                            # add train summaries
+                            model.summary_writer.add_summary(
+                                summary=batch_summary, global_step=global_step)
+                            print(format_string.format(model.mode, epoch, batch, global_step, loss, acc,
+                                                       time.time() - step_begin))
+                            step_begin = time.time()
+                        batch += 1
 
-        print("......end training.....")
-
-    def test(self):  #
+                        # # run internal_eval during training epoch
+                        # if global_step % self.model_config.valid_step == 0 and global_step > 0:
+                        #     try:
+                        #         valid_result = self._internal_eval(sess=sess)
+                        #     except tf.errors.OutOfRangeError:
+                        #         self.logger.info("finished validation in training step {}".format(global_step))
+                        #
+                        #     valid_acc = valid_result
+                        #     if valid_acc > max_acc:  # save the best model session
+                        #         self._save_model(sess=sess, global_step=global_step)
+                        #     print('training: epoch={}, step={}, validation: average_result ={}'
+                        #           .format(epoch, global_step, valid_result))
+                    except tf.errors.OutOfRangeError:  # ==> "End of training dataset"
+                        try:
+                            valid_result = self._internal_eval(model=model,sess=sess)
+                        except tf.errors.OutOfRangeError:
+                            model.logger.info("finished validation in training step {}"
+                                              .format(global_step))
+                        valid_acc = valid_result
+                        if valid_acc > max_acc:  # save the best model session
+                            max_acc = valid_acc
+                            model.save_model(sess=sess, global_step=global_step)
+                        print('training: epoch={}, step={}, validation: average_result ={}'
+                              .format(epoch, global_step, valid_result))
+                        print("training epoch={} finished with {} batches, global_step={}, elapsed={} "
+                              .format(epoch, batch, global_step, time.time() - begin))
+                        break  # break the training while True
         pass
 
-    def inference(self):
+        # validation with current (such as training) session on validation data set
+
+    @timeit
+    def _internal_eval(self, model, sess):
+        """
+        running internal evaluation with current sess
+        :param model:
+        :param sess:
+        :return:
+        """
+        fetches = [model.accuracy, model.loss, model.summary_merged]
+        batch_count = 0
+        eval_acc = 0.0
+        validation_init_op = self.data_reader.get_valid_init_op()
+        # initialize validation dataset
+        sess.run(validation_init_op)
+        step_begin = time.time()
+        global_step = tf.train.global_step(sess, model.global_step_tensor)
+        while True:  # iterate eval batch at step
+            try:
+                eval_step_result = sess.run(fetches=fetches)
+                acc, loss, summaries = eval_step_result
+                model.summary_validation_writer.add_summary(
+                    summary=summaries, global_step=global_step)
+                eval_acc += acc
+                batch_count += 1
+                if batch_count % self.model_config.display_and_summary_step == 0:
+                    print("valid: step={0:8d}, batch={1} loss={2:.4f}, acc={3:.4f}, elapsed={4:.4f}"
+                          .format(global_step, batch_count, loss, acc, time.time() - step_begin))
+                    step_begin = time.time()
+                if batch_count >= 50:
+                    break
+            except tf.errors.OutOfRangeError:  # ==> "End of validation dataset"
+                print("validation finished : step={0}, batch={1}, elapsed={2:.4f}"
+                      .format(global_step, batch_count, time.time() - step_begin))
+                break
+
+        if batch_count > 0:
+            eval_acc = eval_acc / batch_count
+        result = eval_acc
+        return result
         pass
 
     @timeit
-    def get_logger(self):
-        logger = logging.getLogger('tensorflow')
-        logger.setLevel(logging.DEBUG)
-        logging.basicConfig(format="%(message)s", level=logging.DEBUG)
-        self.logger = logger
+    def valid(self):
+        pass
 
-    pass
+    @timeit
+    def infer(self, sess, dataset):
+        pass
 
 
 def main(_):
