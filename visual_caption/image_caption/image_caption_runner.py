@@ -33,8 +33,11 @@ class ImageCaptionRunner(BaseRunner):
                                   data_reader=self.data_reader,
                                   mode=ModeKeys.TRAIN)
 
-        fetches = [model.summary_merged, model.loss, model.accuracy, model.train_op, model.input_seqs]
-        format_string = "{0}: epoch={1:2d}, batch={2:6d}, step={3:6d}, loss={4:.6f}, acc={5:.6f}, elapsed={6:.6f}"
+        fetches = [model.summary_merged,
+                   model.loss, model.accuracy,
+                   model.train_op, model.input_seqs]
+        format_string = "{0}: epoch={1:2d}, batch={2:6d}, step={3:6d}," \
+                        " loss={4:.6f}, acc={5:.6f}, elapsed={6:.6f}"
         with tf.Session(config=self.model_config.sess_config) as sess:
             model.summary_writer.add_graph(sess.graph)
             if not model.restore_model(sess=sess):
@@ -48,7 +51,6 @@ class ImageCaptionRunner(BaseRunner):
 
             # running first internal evaluation
             max_acc = self._internal_eval(model=model, sess=sess)
-            global_step = tf.train.global_step(sess, model.global_step_tensor)
             for epoch in range(model.model_config.max_max_epoch):
                 sess.run(train_init_op)  # initial train data options
                 step_begin = time.time()
@@ -56,7 +58,6 @@ class ImageCaptionRunner(BaseRunner):
                 while True:  # train each batch in a epoch
                     try:
                         result_batch = sess.run(fetches)  # run training step
-
                         global_step = tf.train.global_step(sess, model.global_step_tensor)
                         # display and summarize training result
                         if global_step % model.model_config.display_and_summary_step == 0:
@@ -85,6 +86,8 @@ class ImageCaptionRunner(BaseRunner):
                         try:
                             valid_result = self._internal_eval(model=model, sess=sess)
                         except tf.errors.OutOfRangeError:
+                            global_step = tf.train.global_step(sess,
+                                                               model.global_step_tensor)
                             model.logger.info("finished validation in training step {}"
                                               .format(global_step))
                         valid_acc = valid_result
@@ -153,7 +156,9 @@ class ImageCaptionRunner(BaseRunner):
         index2token = self.data_reader.data_embedding.index2token
 
         model = infer_model
-        fetches = [model.loss, model.accuracy, model.image_ids, model.input_seqs, model.target_seqs,
+        fetches = [model.loss, model.accuracy,
+                   model.image_ids,
+                   model.input_seqs, model.target_seqs,
                    model.predict_predictions]
         format_string = "{}: batch={:6d}, step={:6d}, loss={:.6f}, acc={:.6f}, elapsed={:.6f}"
         with tf.Session(config=model.model_config.sess_config) as sess:
@@ -166,7 +171,7 @@ class ImageCaptionRunner(BaseRunner):
 
             sess.run(tf.tables_initializer())
             begin = time.time()
-            infer_init_op = model.data_reader.get_test_init_op()
+            infer_init_op = model.data_reader.get_valid_init_op()
             sess.run(infer_init_op)  # initial infer data options
             batch = 0
             global_step = tf.train.global_step(sess, model.global_step_tensor)
@@ -216,8 +221,8 @@ class ImageCaptionRunner(BaseRunner):
 
 def main(_):
     runner = ImageCaptionRunner()
-    # runner.train()
-    runner.infer()
+    runner.train()
+    # runner.infer()
 
 
 if __name__ == '__main__':
