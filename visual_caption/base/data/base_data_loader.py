@@ -4,7 +4,7 @@ from __future__ import division
 from __future__ import print_function
 from __future__ import unicode_literals  # compatible with python3 unicode coding
 
-from abc import ABCMeta, abstractmethod
+from abc import ABCMeta
 
 
 class BaseDataLoader(object):

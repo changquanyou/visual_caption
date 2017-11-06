@@ -20,7 +20,7 @@ class BaseDataReader(object):
         # default batch_size from data reader config
         self._batch_size = self._data_config.reader_batch_size
         self._build_context_and_feature()
-        self.data_iterator = None
+        self.data_iterator = self.get_data_iterator()
         pass
 
     def get_data_iterator(self):
@@ -28,15 +28,16 @@ class BaseDataReader(object):
         get a data iterator for all dataset including train,valid and test
         :return:
         """
-        dataset = tf.contrib.data.TFRecordDataset(self._data_config.train_data_dir)
-        self.data_iterator = Iterator.from_structure(
+        dataset = self._get_dataset(self._data_config.train_data_dir)
+        data_iterator = Iterator.from_structure(
             output_types=dataset.output_types,
             output_shapes=dataset.output_shapes
         )
-        return self.data_iterator
+        return data_iterator
 
-    def get_next_batch(self, batch_size):
-        self._batch_size = batch_size
+    def get_next_batch(self, batch_size=None):
+        if batch_size:
+            self._batch_size = batch_size
         next_batch = self.data_iterator.get_next()
         return next_batch
 
@@ -68,15 +69,13 @@ class BaseDataReader(object):
             data_files.append(data_file)
         dataset = tf.contrib.data.TFRecordDataset(data_files)
         # parsing tf_record
-        dataset = dataset.map(self._parse_tf_example,
-                              num_threads=4,
-                              output_buffer_size=100)
+        dataset = dataset.map(self._parse_tf_example)
         # mapping dataset
         dataset = self._mapping_dataset(dataset)  # mapping to target format
         return dataset
 
     @abstractmethod
-    def _mapping_dataset(self):
+    def _mapping_dataset(self, dataset):
         """mapping data to necessary format  """
         raise NotImplementedError()
         pass
