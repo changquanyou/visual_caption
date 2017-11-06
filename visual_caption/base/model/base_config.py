@@ -6,11 +6,9 @@ from __future__ import unicode_literals  # compatible with python3 unicode codin
 
 import os
 import time
-
-import tensorflow as tf
-import os
 from pathlib import Path
 
+import tensorflow as tf
 
 # BATCH_SIZE = None
 max_grad_norm = 5
@@ -25,6 +23,8 @@ early_stopping = 100
 home = str(Path.home())
 
 BASE_DIR = os.path.join(home, 'workspace')  # base running dir for all models
+
+
 # PROJECT_DIR  = os.path.join()
 
 
@@ -33,8 +33,8 @@ class BaseConfig(object):
         self.model_name = model_name
         self.mode = mode  # train,test or validation
 
-        self.base_dir = BASE_DIR # base dir for model
-        self.model_dir = os.path.join(self.base_dir, self.model_name) # for
+        self.base_dir = BASE_DIR  # base dir for model
+        self.model_dir = os.path.join(self.base_dir, self.model_name)  # for
         # self.module_dir = os.path.join(self.base_dir, self.model_name)
 
         # number of GPUs
@@ -47,10 +47,11 @@ class BaseConfig(object):
 
         # leaning rate for training
         self.learning_rate_min = 0.01,  # min learning rate.
-        self.learning_initial_rate = 0.2
+        self.learning_rate_initial = 0.2
         self.learning_rate_decay_factor = 0.5
         self.learning_decay_steps = 10000
         self.learning_decay_rate = 0.96
+        self.learning_start_decay_step = 10000
 
         self.early_stopping = early_stopping
 

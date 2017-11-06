@@ -24,8 +24,7 @@ class BaseModel(object):
 
         self.config = config
         self.data_reader = data_reader
-        self.global_step = tf.Variable(initial_value=0, trainable=False, name="global_step",
-                                        collections=[tf.GraphKeys.GLOBAL_STEP, tf.GraphKeys.GLOBAL_VARIABLES])
+        self.global_step = tf.contrib.framework.get_or_create_global_step()
         self.summary_writer = tf.summary.FileWriter(logdir=self.config.log_dir)
         self._build_model()
 
@@ -49,9 +48,11 @@ class BaseModel(object):
         self._get_logger()
         self._build_embeddings()
         self._build_inputs()
-        self._build_network()
+        self._build_graph()
         self._build_loss()
+        self._build_learning_rate()
         self._build_optimizer()
+        self._build_gradients()
         self._build_train_op()
         self._build_summaries()
 
@@ -84,31 +85,49 @@ class BaseModel(object):
         # define loss
         raise NotImplementedError()
 
-    @abstractmethod
-    def _build_fetches(self):
-        # define default fetches for run_epoch
-        raise NotImplementedError()
-
     @timeit
-    @define_scope(scope_name='optimizer')
-    def _build_optimizer(self):
+    @define_scope(scope_name='learning_rate')
+    def _build_learning_rate(self):
+
         # num_examples_per_epoch = self._data_reader.num_examples_per_epoch
         # batch_size = self._data_reader.data_config.batch_size
         # num_batches_per_epoch = (num_examples_per_epoch / batch_size)
         # decay_steps = int(num_batches_per_epoch *
         #                   self.config.learning_decay_steps)
+        self._learning_rate = tf.constant(self.config.learning_rate_initial)
+        self._learning_rate = tf.cond(
+            self.global_step < self.config.learning_start_decay_step,
+            lambda: self._learning_rate,
+            lambda: tf.train.exponential_decay(
+                learning_rate=self._learning_rate,
+                global_step=(self.global_step - self.config.learning_start_decay_step),
+                decay_steps=self.config.learning_decay_steps,
+                decay_rate=self.config.learning_decay_rate,
+                staircase=True),
+            name="learning_rate")
+        # self._learning_rate = learning_rate
+        # self._learning_rate = self.config.learning_initial_rate
+        tf.summary.scalar('learning_rate', self._learning_rate)
 
-        self._learning_rate = tf.maximum(
-            self.config.learning_rate_min,  # min learning rate.
-            tf.train.exponential_decay(learning_rate=self.config.learning_initial_rate,
-                                       global_step=self.global_step,
-                                       decay_steps=self.config.learning_decay_steps,
-                                       decay_rate=self.config.learning_decay_rate))
+    @timeit
+    @define_scope(scope_name='optimizer')
+    def _build_optimizer(self):
+        self._optimizer = tf.train.GradientDescentOptimizer(
+            learning_rate=self._learning_rate
+        )
 
-        # learning_rate = self._learning_rate
-        learning_rate = self.config.learning_initial_rate
-        tf.summary.scalar('learning_rate', learning_rate)
-        self._optimizer = tf.train.GradientDescentOptimizer(learning_rate)
+    @timeit
+    @define_scope(scope_name='gradients')
+    def _build_gradients(self):
+        """Clipping gradients of a model."""
+        trainables = tf.trainable_variables()
+        with tf.device(self._get_gpu(self.config.num_gpus - 1)):
+            gradients = tf.gradients(self.loss, trainables)
+            clipped_gradients, gradient_norm = tf.clip_by_global_norm(
+                gradients, self.config.max_grad_norm)
+            self._gradients = clipped_gradients
+            tf.summary.scalar("grad_norm", gradient_norm)
+            tf.summary.scalar("clipped_gradient", tf.global_norm(clipped_gradients))
 
     @timeit
     @define_scope(scope_name='train_op')
@@ -117,18 +136,10 @@ class BaseModel(object):
         Set up the training ops.
         """
         trainables = tf.trainable_variables()
-        gradients = tf.gradients(self.loss, trainables)
-
-        with tf.device(self._get_gpu(self.config.num_gpus - 1)):
-            clipped_gradients, global_norm = tf.clip_by_global_norm(t_list=gradients,
-                                                                    clip_norm=self.config.max_grad_norm,
-                                                                    name='clip_by_global_norm')
-            tf.summary.scalar('global_norm', global_norm)
-
-        grads_and_vars = zip(clipped_gradients, trainables)
+        grads_and_vars = zip(self._gradients, trainables)
         self.train_op = self._optimizer.apply_gradients(grads_and_vars=grads_and_vars,
-                                                         global_step=self.global_step,
-                                                         name='train_step')
+                                                        global_step=self.global_step,
+                                                        name='train_step')
 
     @timeit
     @define_scope(scope_name='summaries')
@@ -176,6 +187,51 @@ class BaseModel(object):
         logging.basicConfig(format="%(message)s", level=logging.DEBUG)
         self._logger = logger
 
+    @timeit
+    def _compute_loss(self, logits):
+        """Compute optimization loss."""
+        target_output = self.iterator.target_output
+        if self.time_major:
+            target_output = tf.transpose(target_output)
+        max_time = self.get_max_time(target_output)
+        crossent = tf.nn.sparse_softmax_cross_entropy_with_logits(
+            labels=target_output, logits=logits)
+        target_weights = tf.sequence_mask(
+            self.iterator.target_sequence_length, max_time, dtype=logits.dtype)
+        if self.time_major:
+            target_weights = tf.transpose(target_weights)
 
+        loss = tf.reduce_sum(
+            crossent * target_weights) / tf.to_float(self.batch_size)
+        return loss
+
+    def _get_infer_summary(self, hparams):
+        return tf.no_op()
+
+    def infer(self, sess):
+        assert self.mode == tf.contrib.learn.ModeKeys.INFER
+        return sess.run([
+            self.infer_logits, self.infer_summary, self.sample_id, self.sample_words
+        ])
+
+    def _get_infer_summary(self, hparams):
+        return tf.no_op()
+
+    def decode(self, sess):
+        """Decode a batch.
+
+        Args:
+          sess: tensorflow session to use.
+
+        Returns:
+          A tuple consiting of outputs, infer_summary.
+            outputs: of size [batch_size, time]
+        """
+        _, infer_summary, _, sample_words = self.infer(sess)
+
+        # make sure outputs is of shape [batch_size, time]
+        if self.time_major:
+            sample_words = sample_words.transpose()
+        return sample_words, infer_summary
 
     pass
