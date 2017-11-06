@@ -57,7 +57,7 @@ class ImageCaptionDataConfig(BaseDataConfig):
         word2vec_file_name = "word2vec_" + str(self.embedding_dim_size) + ".model"
         self.word2vec_model = os.path.join(self.embedding_dir, word2vec_file_name)
 
-        self.vocab_file = os.path.join(self.embedding_dir,"vocab.txt")
+        self.vocab_file = os.path.join(self.embedding_dir, "vocab.txt")
 
         # for encoder-decoder model
         self.seq_max_length = 100

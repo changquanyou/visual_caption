@@ -9,9 +9,10 @@ from tensorflow.python.ops import lookup_ops
 
 from visual_caption.base.data.base_data_reader import BaseDataReader
 from visual_caption.image_caption.data.data_config import ImageCaptionDataConfig
-
-
 # Data Reader class for AI_Challenge_2017
+from visual_caption.image_caption.data.data_embedding import ImageCaptionDataEmbedding
+
+
 class ImageCaptionDataReader(BaseDataReader):
     """
         Read data for train, validation, test dataset with embedding model
@@ -23,7 +24,7 @@ class ImageCaptionDataReader(BaseDataReader):
         self._vocab_table = lookup_ops.index_table_from_file(
             vocabulary_file=self._data_config.vocab_file, default_value=0)
 
-        # self.data_embedding = CaptionDataEmbedding()
+        self.data_embedding = ImageCaptionDataEmbedding()
 
         super(ImageCaptionDataReader, self).__init__(data_config=data_config)
 
@@ -149,7 +150,6 @@ def main(_):
                 (image_ids, image_features, captions, targets,
                  caption_ids, target_ids, caption_lengths, target_lengths) = batch_data
                 for idx, feature in enumerate(image_features):
-
                     caption = b' '.join(captions[idx])
                     caption = caption.decode()
 
@@ -157,7 +157,7 @@ def main(_):
                     target = target.decode()
 
                     print("idx={}, image_id={}, \ncaption=[{}]\ncaption_id=[{}]\ntarget=[{}]\ntarget_id=[{}]"
-                          .format(idx,image_ids[idx], caption,caption_ids[idx],target,target_ids[idx]))
+                          .format(idx, image_ids[idx], caption, caption_ids[idx], target, target_ids[idx]))
                 global_step = tf.train.global_step(sess, global_step_tensor)
             except tf.errors.OutOfRangeError:  # ==> "End of validation dataset"
                 print("data reader finished at step={0}".format(global_step))

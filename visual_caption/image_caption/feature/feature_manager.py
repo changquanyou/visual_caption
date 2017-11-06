@@ -8,6 +8,7 @@ import os
 
 import tensorflow as tf
 from scipy.misc import imresize
+
 from visual_caption.image_caption.feature.vgg19 import Vgg19
 
 vgg_data_dir = "/home/liuxiaoming/data/vgg"

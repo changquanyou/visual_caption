@@ -11,7 +11,6 @@ import tensorflow as tf
 
 from visual_caption.base.data.base_data_builder import BaseDataBuilder
 from visual_caption.image_caption.data.data_config import ImageCaptionDataConfig
-from visual_caption.image_caption.data.data_embedding import ImageCaptionDataEmbedding
 from visual_caption.image_caption.data.data_loader import ImageCaptionDataLoader
 from visual_caption.image_caption.data.data_utils import ImageCaptionDataUtils
 from visual_caption.image_caption.feature.feature_manager import FeatureManager
@@ -50,7 +49,6 @@ class ImageCaptionDataBuilder(BaseDataBuilder):
         self.data_loader = ImageCaptionDataLoader()
         self.data_utils = ImageCaptionDataUtils()
 
-
         self.image_decoder = ImageDecoder()
         self.feature_manager = FeatureManager()
 
@@ -88,7 +86,7 @@ class ImageCaptionDataBuilder(BaseDataBuilder):
             if batch % 10 == 0 and batch > 0:
                 print("flush batch {} dataset into file {}".format(batch, file))
                 sys.stdout.flush()
-            if batch >100 :
+            if batch > 100:
                 break
 
         tf_writer.close()

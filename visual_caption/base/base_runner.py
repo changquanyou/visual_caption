@@ -34,6 +34,6 @@ class BaseRunner(object):
 
     @timeit
     @abstractmethod
-    def infer(self, sess, dataset):
+    def infer(self):
         raise NotImplementedError()
         pass

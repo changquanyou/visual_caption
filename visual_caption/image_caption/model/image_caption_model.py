@@ -37,7 +37,7 @@ class ImageCaptionModel(BaseModel):
     def _build_inputs(self):
         data_type = self.model_config.data_type
         if self.mode == tf.contrib.learn.ModeKeys.INFER:
-            self.image_ids = tf.placeholder(dtype=tf.int32, shape=[None], name='image_ids')
+            self.image_ids = tf.placeholder(dtype=tf.string, shape=[None], name='image_ids')
             self.input_image_embeddings = tf.placeholder(dtype=data_type,
                                                          shape=[None, 4096],
                                                          name="image_inputs_embeddings")

@@ -13,10 +13,10 @@ import tensorflow as tf
 def timeit(f):
     def timed(*args, **kw):
         ts = time.time()
-        print('......   begin  {}   ......'.format(f.__name__))
+        print('......   begin  {:8s}   ......'.format(f.__name__))
         result = f(*args, **kw)
         te = time.time()
-        print('......   finish {}, took: {} sec   ......'.format(f.__name__, te - ts))
+        print('......   finish {:8s}, took: {:.8f} sec   ......'.format(f.__name__, te - ts))
         return result
 
     return timed

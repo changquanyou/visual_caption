@@ -83,7 +83,7 @@ class ImageCaptionRunner(BaseRunner):
                         #           .format(epoch, global_step, valid_result))
                     except tf.errors.OutOfRangeError:  # ==> "End of training dataset"
                         try:
-                            valid_result = self._internal_eval(model=model,sess=sess)
+                            valid_result = self._internal_eval(model=model, sess=sess)
                         except tf.errors.OutOfRangeError:
                             model.logger.info("finished validation in training step {}"
                                               .format(global_step))
@@ -146,13 +146,78 @@ class ImageCaptionRunner(BaseRunner):
         pass
 
     @timeit
-    def infer(self, sess, dataset):
+    def infer(self):
+        infer_model = ImageCaptionModel(model_config=self.model_config,
+                                        data_reader=self.data_reader,
+                                        mode=ModeKeys.INFER)
+        index2token = self.data_reader.data_embedding.index2token
+
+        model = infer_model
+        fetches = [model.loss, model.accuracy, model.image_ids, model.input_seqs, model.target_seqs,
+                   model.predict_predictions]
+        format_string = "{}: batch={:6d}, step={:6d}, loss={:.6f}, acc={:.6f}, elapsed={:.6f}"
+        with tf.Session(config=model.model_config.sess_config) as sess:
+            model.summary_writer.add_graph(sess.graph)
+            # CheckPoint State
+            if not model.restore_model(sess=sess):
+                init_op = tf.group(tf.local_variables_initializer(),
+                                   tf.global_variables_initializer())
+                sess.run(init_op)
+
+            sess.run(tf.tables_initializer())
+            begin = time.time()
+            infer_init_op = model.data_reader.get_test_init_op()
+            sess.run(infer_init_op)  # initial infer data options
+            batch = 0
+            global_step = tf.train.global_step(sess, model.global_step_tensor)
+            while True:  # train each batch in a epoch
+                try:
+                    batch_data = sess.run(model.next_batch)
+                    (image_ids, image_features, captions, targets, caption_ids, target_ids,
+                     caption_lengths, target_lengths) = batch_data
+                    feed_dict = {
+
+                        model.image_ids: image_ids,
+                        model.input_image_embeddings: image_features,
+
+                        model.input_seqs: caption_ids,
+                        model.target_seqs: target_ids,
+
+                        model.input_lengths: caption_lengths,
+                        model.target_lengths: target_lengths,
+
+                    }
+                    result_batch = sess.run(fetches=fetches, feed_dict=feed_dict)  # run training step
+                    batch += 1
+                    global_step = tf.train.global_step(sess, model.global_step_tensor)
+                    # display and summarize training result
+                    loss, acc, image_ids, input_seqs, target_seqs, predicts = result_batch
+                    for idx, image_id in enumerate(image_ids):
+                        caption_text = b' '.join(captions[idx])
+                        caption_text = caption_text.decode()
+
+                        predict = predicts[idx]
+                        predict_byte_list = [index2token[token_id] for token_id in predict]
+                        predict_text = ' '.join(predict_byte_list)
+
+                        print("image_id={}, \n\tcaption=[{}]\n\tpredict=[{}]"
+                              .format(image_ids[idx], caption_text, predict_text))
+                    # add train summaries
+                    # print(format_string.format(model.mode, batch, global_step, loss, acc,
+                    #                            time.time() - step_begin))
+                    step_begin = time.time()
+                except tf.errors.OutOfRangeError:  # ==> "End of training dataset"
+                    print(" finished with {} batches, global_step={}, elapsed={} "
+                          .format(batch, global_step, time.time() - begin))
+                    break  # break the training while True
+
         pass
 
 
 def main(_):
     runner = ImageCaptionRunner()
-    runner.train()
+    # runner.train()
+    runner.infer()
 
 
 if __name__ == '__main__':

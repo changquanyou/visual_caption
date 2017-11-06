@@ -9,7 +9,6 @@ import skimage.io
 
 
 class ImageCaptionDataUtils(object):
-
     def load_embeddings(self):
         pass
 

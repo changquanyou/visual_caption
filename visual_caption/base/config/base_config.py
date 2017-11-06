@@ -8,7 +8,7 @@ import os
 from pathlib import Path
 
 home = str(Path.home())  # home dir
-project_name = 'tf-visgen'  # project name
+project_name = 'ai_challenge'  # project name
 
 BASE_WORK_DIR = os.path.join(home, 'workspace')  # base work space dir for all models running
 BASE_DATA_DIR = os.path.join(home, 'data')  # base data dir for models

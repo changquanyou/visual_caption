@@ -14,6 +14,7 @@ class DataDisplay(object):
     """
     display data
     """
+
     def __init__(self):
         self.data_loader = ImageCaptionDataLoader()
         pass

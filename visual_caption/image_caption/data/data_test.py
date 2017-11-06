@@ -23,9 +23,8 @@ embedding_dir = os.path.join(home, 'data/ai_challenge/embeddings')
 
 
 class Embedding_Test(object):
-
     def __init__(self):
-        self.char2vec_model = os.path.join(embedding_dir,'char2vec_100.model')
+        self.char2vec_model = os.path.join(embedding_dir, 'char2vec_100.model')
         self.load_embeddings()
 
     def load_embeddings(self):
@@ -54,13 +53,11 @@ class Embedding_Test(object):
     def test_embeddings(self):
         with open(file=caption_char_file, mode='r', encoding='utf-8') as f:
             sentences = f.readlines()
-            for idx , sentence in enumerate(sentences):
+            for idx, sentence in enumerate(sentences):
                 sentence = str.strip(sentence)
                 ids = [self.token2index[char] for char in sentence.split()]
-                print('sentence[{}] = {}'.format(idx,sentence))
-                print('ids[{}] = {}\n'.format(idx,ids))
-
-
+                print('sentence[{}] = {}'.format(idx, sentence))
+                print('ids[{}] = {}\n'.format(idx, ids))
 
 
 def build_vocab(filename):

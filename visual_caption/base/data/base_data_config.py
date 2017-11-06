@@ -28,11 +28,11 @@ class BaseDataConfig(BaseConfig):
         self.model_data_dir = os.path.join(self.project_data_dir, self.model_name)
 
         self.train_data_dir = os.path.join(self.model_data_dir, "train")
-        self.test_data_dir = os.path.join(self.model_data_dir, "test")
         self.valid_data_dir = os.path.join(self.model_data_dir, "valid")
+        self.test_data_dir = os.path.join(self.model_data_dir, "test")
 
         """set default of model running"""
-        self.num_epoches = 10
+        self.num_epoches = 100
 
         """Sets the default model hyperparameters."""
         # File pattern of sharded TFRecord file containing SequenceExample protos.
