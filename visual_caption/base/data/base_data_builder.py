@@ -4,6 +4,8 @@ from __future__ import division
 from __future__ import print_function
 from __future__ import unicode_literals  # compatible with python3 unicode coding
 
+from abc import abstractmethod, ABCMeta
+import logging
 import tensorflow as tf
 
 
@@ -14,6 +16,23 @@ class BaseDataBuilder(object):
     fetch raw data and convert them into TFRecord format
 
     """
+    __metaclass__ = ABCMeta
+
+    def __init__(self, data_config):
+        self.data_config = data_config
+
+        self._get_logger()
+
+        # test_file = os.path.join(self.data_config.test_data_dir, 'test.tfrecords')
+        # validation_file = os.path.join(self.data_config.valid_data_dir, 'validation.tfrecords')
+
+        # self.test_writer = tf.python_io.TFRecordWriter(test_file)
+        # self.valid_writer = tf.python_io.TFRecordWriter(validation_file)
+    def _get_logger(self):
+        logger = logging.getLogger("logger")
+        logger.setLevel(logging.INFO)
+        logging.basicConfig(format="%(message)s", level=logging.DEBUG)
+        self.logger = logger
 
     def _int64_feature(self, value):
         """Wrapper for inserting an int64 Feature into a SequenceExample proto,
@@ -45,3 +64,23 @@ class BaseDataBuilder(object):
             e.g,  in list of bytes
         """
         return tf.train.Feature(float_list=tf.train.FloatList(value=value))
+
+    @abstractmethod
+    def _to_tf_example(self, single_data):
+        raise NotImplementedError()
+        pass
+
+    @abstractmethod
+    def build_train_data(self):
+        raise NotImplementedError()
+        pass
+
+    @abstractmethod
+    def build_test_data(self):
+        raise NotImplementedError()
+        pass
+
+    @abstractmethod
+    def build_validation_data(self):
+        raise NotImplementedError()
+        pass

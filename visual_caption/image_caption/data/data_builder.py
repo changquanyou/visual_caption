@@ -8,6 +8,7 @@ import os
 import sys
 
 import tensorflow as tf
+from tensorflow.contrib.learn import ModeKeys
 
 from visual_caption.base.data.base_data_builder import BaseDataBuilder
 from visual_caption.image_caption.data.data_config import ImageCaptionDataConfig
@@ -43,33 +44,18 @@ class ImageCaptionDataBuilder(BaseDataBuilder):
 
     """
 
-    def __init__(self):
-
-        self.data_config = ImageCaptionDataConfig()
+    def __init__(self, data_config):
+        super(ImageCaptionDataBuilder, self).__init__(
+            data_config=data_config)
         self.data_loader = ImageCaptionDataLoader()
         self.data_utils = ImageCaptionDataUtils()
-
         self.image_decoder = ImageDecoder()
         self.feature_manager = FeatureManager()
 
-    def build_tfrecords(self, mode):
+    def _build_tfrecords(self, image_dir, data_gen, output_file):
         """
         convert AI_Challenge Image_Caption data to TFRecord file format with SequenceExample protos.
         """
-
-        if mode == 'train':
-            image_dir = self.data_config.train_image_dir
-            data_gen = self.data_loader.load_train_data()
-            output_file = self.data_config.train_tf_data_file
-        elif mode == 'test':
-            image_dir = self.data_config.test_image_dir
-            data_gen = self.data_loader.load_test_data()
-            output_file = self.data_config.test_tf_data_file
-        elif mode == 'validation':
-            image_dir = self.data_config.validation_image_dir
-            data_gen = self.data_loader.load_validation_data()
-            output_file = self.data_config.validation_tf_data_file
-
         batch_length = 100  # each batch contains len(batch_data) data instances,
         for batch, batch_data in enumerate(data_gen):  # for each batch
             if batch % batch_length == 0:
@@ -86,6 +72,7 @@ class ImageCaptionDataBuilder(BaseDataBuilder):
             if batch % 10 == 0 and batch > 0:
                 print("flush batch {} dataset into file {}".format(batch, file))
                 sys.stdout.flush()
+
             if batch > 100:
                 break
 
@@ -99,7 +86,6 @@ class ImageCaptionDataBuilder(BaseDataBuilder):
         :return:
         """
         sequence_example_list = []
-
         # get visual features for image batch
         image_batch = []
         for caption_data in batch_caption_data:
@@ -112,12 +98,10 @@ class ImageCaptionDataBuilder(BaseDataBuilder):
         # get list of sequence examples for batch caption_data
         for idx, caption_data in enumerate(batch_caption_data):  # for each caption meta data
             visual_feature = visual_features[idx]  #
-
             # get list of sequence examples for each caption_data
             example_list = self._to_sequence_example(visual_feature=visual_feature,
                                                      caption_data=caption_data)
             sequence_example_list.extend(example_list)
-
         return sequence_example_list
 
     def _to_sequence_example(self, visual_feature, caption_data):
@@ -142,7 +126,8 @@ class ImageCaptionDataBuilder(BaseDataBuilder):
                 "visual/image_id": self._bytes_feature(encoded_image_id),
                 # "image/rawdata": self._bytes_feature(raw_image),
                 # convert  ndarray to bytes for visual feature, such as vgg19_fc7
-                self.data_config.visual_feature_name: self._bytes_feature(visual_feature.tobytes())
+                self.data_config.visual_feature_name:
+                    self._bytes_feature(visual_feature.tobytes())
             })
 
         # each image have multi caption texts
@@ -152,30 +137,57 @@ class ImageCaptionDataBuilder(BaseDataBuilder):
         for caption in captions:  # for each caption text
             caption = str.strip(caption)
             if len(caption) > 0:
-                line = [char for char in caption.strip()]  # separate each token with a whitespace
-                line.insert(0, self.data_config.begin_token)
-                line.append(self.data_config.end_token)
-                caption_ids = [self.data_embeddings.token2index[char] for char in line]
-                # # encoded_caption_
                 caption_encoded = [char.encode() for char in caption]
-                # ids for each caption text
-                # caption_ids = self.caption_to_ids(caption)
-
-                # feature list of each caption text and ids
                 feature_lists = tf.train.FeatureLists(feature_list={
-                    self.data_config.caption_text_name: self._bytes_feature_list(caption_encoded),
-                    self.data_config.caption_ids_name: self._int64_feature_list(caption_ids)
+                    self.data_config.caption_text_name:
+                        self._bytes_feature_list(caption_encoded),
                 })
 
-                sequence_example = tf.train.SequenceExample(context=context, feature_lists=feature_lists)
+                sequence_example = tf.train.SequenceExample(context=context,
+                                                            feature_lists=feature_lists)
                 sequence_example_list.append(sequence_example)
 
-        assert len(sequence_example_list) == 5
+        # assert len(sequence_example_list) == 5
 
         return sequence_example_list
 
+    def build_train_data(self):
+        image_dir = self.data_config.train_image_dir
+        data_gen = self.data_loader.load_train_data()
+        output_file = self.data_config.train_tf_data_file
+        self._build_tfrecords(image_dir=image_dir,
+                              data_gen=data_gen,
+                              output_file=output_file)
+        pass
+
+    def build_test_data(self):
+        image_dir = self.data_config.test_image_dir
+        data_gen = self.data_loader.load_test_data()
+        output_file = self.data_config.test_tf_data_file
+        self._build_tfrecords(image_dir=image_dir,
+                              data_gen=data_gen,
+                              output_file=output_file)
+        pass
+
+    def build_validation_data(self):
+        image_dir = self.data_config.validation_image_dir
+        data_gen = self.data_loader.load_validation_data()
+        output_file = self.data_config.validation_tf_data_file
+        self._build_tfrecords(image_dir=image_dir,
+                              data_gen=data_gen,
+                              output_file=output_file)
+        pass
+
+
+def main(_):
+    data_config = ImageCaptionDataConfig()
+    data_builder = ImageCaptionDataBuilder(data_config=data_config)
+
+    data_builder.build_train_data()
+    data_builder.build_validation_data()
+    data_builder.build_test_data()
+
+
 
 if __name__ == '__main__':
-    data_builder = ImageCaptionDataBuilder()
-    # data_builder.build_tfrecords(mode='train')
-    data_builder.build_tfrecords(mode='validation')
+    tf.app.run()
