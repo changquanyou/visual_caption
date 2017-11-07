@@ -25,7 +25,7 @@ class ImageCaptionConfig(BaseModelConfig):
 
         self.length_max_output = 64
 
-        self.train_embeddings = False
+        self.train_embeddings = True
         self.pass_hidden_state = False  # whether passing hidden or not during decoding
 
         self.attention_mechanism = "normed_bahdanau"

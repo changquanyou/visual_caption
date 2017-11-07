@@ -6,6 +6,8 @@ from __future__ import unicode_literals  # compatible with python3 unicode codin
 
 import tensorflow as tf
 from tensorflow.contrib import seq2seq
+from tensorflow.contrib.learn import ModeKeys
+from tensorflow.contrib.seq2seq import GreedyEmbeddingHelper
 from tensorflow.python.layers.core import Dense
 from tensorflow.python.ops.rnn_cell_impl import GRUCell, DropoutWrapper
 
@@ -71,6 +73,7 @@ class ImageCaptionModel(BaseModel):
         self.batch_size = tf.shape(self.input_seqs)[0]
         # Maximum decoder time_steps in current batch
         self.max_seq_length = tf.reduce_max(self.target_lengths)
+
         pass
 
     @timeit
@@ -114,7 +117,7 @@ class ImageCaptionModel(BaseModel):
                                      axis=-1,
                                      name="image_seq_inputs")
         # inputs = self.input_seq_embeddings
-        inputs = image_seq_inputs
+        inputs = image_embedding_seqs
         outputs, outputs_states = tf.nn.bidirectional_dynamic_rnn(
             cell_fw=cell_fw,
             cell_bw=cell_bw,
@@ -134,48 +137,33 @@ class ImageCaptionModel(BaseModel):
         encoder_outputs = self.encoder_outputs
         encoder_final_state = self.encoder_final_state
 
-        target_seq_embeddings = self.target_seq_embeddings
         target_lengths = self.target_lengths
+        # target_seq_embeddings = self.target_seq_embeddings
+
+        image_embedding_seqs = tf.expand_dims(input=self.input_image_embeddings, axis=1)
+        image_embedding_seqs = tf.tile(image_embedding_seqs,
+                                       multiples=[1, self.max_seq_length, 1])
+
+        target_seq_embeddings = tf.concat(values=[self.target_seq_embeddings, image_embedding_seqs],
+                                          axis=-1,
+                                          name="image_seq_inputs")
+        # target_seq_embeddings = image_embedding_seqs
+
 
         batch_size = self.batch_size
         num_units = self.model_config.num_hidden_unit
+        beam_width = self.model_config.beam_width
         vocab_size = self._data_embedding.vocab_size
 
+        # Output projection layer to convert cell_outputs to logits
+        # Projection
+        with tf.variable_scope("decoder/output_projection"):
+            self.output_layer = Dense(vocab_size, name='output_projection')
+
         decoder_cell = self.__create_rnn_cell(num_units * 2)
+
         decoder_initial_state = encoder_final_state
 
-        # for train and eval
-        outputs, output_states, output_lengths = self._decoder_train_layer(
-            encoder_outputs=encoder_outputs,
-            decoder_cell=decoder_cell, decoder_initial_state=decoder_initial_state,
-            target_lengths=target_lengths, target_seq_embeddings=target_seq_embeddings,
-            vocab_size=vocab_size, batch_size=batch_size)
-
-        # for inference
-        predict_outputs, predict_output_states, predict_output_lengths = self._decoder_predict_layer(
-            encoder_outputs=encoder_outputs,
-            decoder_cell=decoder_cell,
-            decoder_initial_state=decoder_initial_state,
-            target_lengths=target_lengths,
-            vocab_size=vocab_size,
-            batch_size=batch_size
-        )
-
-        self.decoder_outputs = outputs.rnn_output
-        self.decoder_predictions = outputs.sample_id
-
-        self.predict_outputs = predict_outputs.rnn_output
-        self.predict_predictions = predict_outputs.sample_id
-        pass
-
-    def _decoder_train_layer(self,
-                             encoder_outputs,
-                             decoder_cell,
-                             decoder_initial_state,
-                             target_lengths,
-                             target_seq_embeddings,
-                             vocab_size,
-                             batch_size):
         # if attention, wrap cell with attention mechanism
         if self.model_config.attention_mechanism:
             decoder_cell, decoder_initial_state = self._attention_cell(
@@ -185,21 +173,51 @@ class ImageCaptionModel(BaseModel):
                 batch_size=batch_size
             )
 
-        train_helper = seq2seq.TrainingHelper(inputs=target_seq_embeddings,
-                                              sequence_length=target_lengths,
-                                              name='training_helper')
-        # Output projection layer to convert cell_outputs to logits
-        output_layer = Dense(vocab_size, name='output_projection')
-        train_decoder = seq2seq.BasicDecoder(cell=decoder_cell,
-                                             helper=train_helper,
-                                             initial_state=decoder_initial_state,
-                                             output_layer=output_layer)
-        # for train and eval
-        max_decoder_length = tf.reduce_max(target_lengths)
+        token2index = self._data_embedding.token2index
+        token_begin = self.model_config.data_config.token_begin
+        token_end = self.model_config.data_config.token_end
+
+        start_tokens = [token2index[token_begin]]
+        end_token = token2index[token_end]
+        decoder_embedding = self._embeddings
+
+        with tf.variable_scope('decoder_helper', reuse=True):
+            if self.mode == ModeKeys.INFER:  # for inference
+                #     # 自定义helper
+                #     # helper = seq2seq.CustomHelper(initialize_fn=self.initial_fn,
+                #     #                               sample_fn=self.sample_fn,
+                #     #                               next_inputs_fn=self.next_inputs_fn)
+                #
+                helper = GreedyEmbeddingHelper(embedding=decoder_embedding,
+                                               start_tokens=tf.fill([batch_size],
+                                                                    token2index[token_begin]),
+                                               end_token=end_token)
+            #
+            else:  # for train or eval helper
+                helper = seq2seq.TrainingHelper(inputs=target_seq_embeddings,
+                                                sequence_length=target_lengths,
+                                                name='training_helper')
+
+        decoder = seq2seq.BasicDecoder(cell=decoder_cell,
+                                       helper=helper,
+                                       initial_state=decoder_initial_state,
+                                       output_layer=self.output_layer)
+
         outputs, output_states, output_lengths = seq2seq.dynamic_decode(
-            decoder=train_decoder, maximum_iterations=max_decoder_length
+            decoder=decoder, maximum_iterations=self.max_seq_length,
+            scope="dynamic_decode"
         )
-        return outputs, output_states, output_lengths
+
+        if beam_width > 0:
+            logits = tf.no_op()
+            sample_id = outputs.predicted_ids
+        else:
+            logits = outputs.rnn_output
+            sample_id = outputs.sample_id
+
+        self.decoder_outputs = logits
+        self.decoder_predictions = sample_id
+        pass
 
     def _attention_cell(self,
                         decoder_cell,
@@ -228,71 +246,6 @@ class ImageCaptionModel(BaseModel):
         attention_cell_initial_state = _state.clone(cell_state=decoder_initial_state)
 
         return attention_cell, attention_cell_initial_state
-
-    def _decoder_predict_layer(self,
-                               encoder_outputs,
-                               decoder_cell,
-                               decoder_initial_state,
-                               target_lengths,
-                               batch_size,
-                               vocab_size):
-
-        token2index = self._data_embedding.token2index
-        token_begin = self.model_config.data_config.token_begin
-        token_end = self.model_config.data_config.token_end
-
-        start_tokens = [token2index[token_begin]]
-        end_token = token2index[token_end]
-
-        decoder_embedding = self._embeddings
-        beam_width = self.model_config.beam_width
-        if beam_width > 0:  # batch_tile for decoder_cell and states
-            decoder_cell, decoder_initial_state = self._beamsearch_attention_cell(
-                decoder_cell=decoder_cell,
-                encoder_outputs=encoder_outputs,
-                decoder_initial_state=decoder_initial_state,
-                beam_width=beam_width,
-                batch_size=batch_size
-            )
-            # for beam search
-            start_tokens = tf.tile(start_tokens, [batch_size])
-            predicting_decoder = seq2seq.BeamSearchDecoder(
-                cell=decoder_cell,
-                embedding=decoder_embedding,
-                start_tokens=start_tokens,
-                end_token=end_token,
-                initial_state=decoder_initial_state,
-                beam_width=beam_width,
-                output_layer=Dense(vocab_size, use_bias=False),
-                length_penalty_weight=0.0)
-
-        else:
-            if self.model_config.attention_mechanism:
-                decoder_cell, decoder_initial_state = self._attention_cell(
-                    decoder_cell=decoder_cell,
-                    encoder_outputs=encoder_outputs,
-                    decoder_initial_state=decoder_initial_state,
-                    batch_size=batch_size
-                )
-            # for greedy search Helper
-            helper = seq2seq.GreedyEmbeddingHelper(
-                embedding=decoder_embedding,
-                start_tokens=tf.fill([batch_size], token2index[token_begin]),
-                end_token=end_token)
-            # Decoder
-            predicting_decoder = seq2seq.BasicDecoder(
-                cell=decoder_cell,
-                helper=helper,
-                initial_state=decoder_initial_state,
-                output_layer=Dense(vocab_size, use_bias=False)
-            )
-
-        # for predict outputs
-        max_decoder_length = tf.reduce_max(target_lengths)
-        outputs, output_states, output_lengths = seq2seq.dynamic_decode(
-            decoder=predicting_decoder, maximum_iterations=max_decoder_length,
-            scope="decoder_predict_outputs")
-        return outputs, output_states, output_lengths
 
     def _beamsearch_attention_cell(self,
                                    encoder_outputs,
@@ -344,6 +297,7 @@ class ImageCaptionModel(BaseModel):
                                    maxlen=self.max_seq_length,
                                    dtype=self.decoder_outputs.dtype,
                                    name='masks')
+
         # _output_layer = Dense(vocab_size, name='output_layer')
         with tf.variable_scope('output'):
             self.logits = self.decoder_outputs
@@ -360,7 +314,10 @@ class ImageCaptionModel(BaseModel):
             tf.summary.scalar("total_loss", total_loss)
 
             correct_prediction = tf.equal(self.decoder_predictions, self.target_seqs)
-            self.accuracy = tf.reduce_mean(tf.cast(correct_prediction, "float"))
+
+            batch_accuracy = tf.div(tf.reduce_sum(tf.multiply(tf.cast(correct_prediction, tf.float32), weights)),
+                                    tf.reduce_sum(weights), name="batch_accuracy")
+            self.accuracy = batch_accuracy
             tf.summary.scalar("accuracy", self.accuracy)
 
 

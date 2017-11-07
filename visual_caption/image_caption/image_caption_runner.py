@@ -25,6 +25,16 @@ class ImageCaptionRunner(BaseRunner):
         self.data_reader = ImageCaptionDataReader(data_config=data_config)
         self.model_config = ImageCaptionConfig(data_config=data_config,
                                                model_name=data_config.model_name)
+
+        self.index2token = self.data_reader.data_embedding.index2token
+        self.token2index = self.data_reader.data_embedding.token2index
+
+        self.token_begin = self.model_config.data_config.token_begin
+        self.token_end = self.model_config.data_config.token_end
+
+        self.token_begin_id = self.token2index[self.token_begin]
+        self.token_end_id = self.token2index[self.token_end]
+
         pass
 
     @timeit
@@ -32,10 +42,10 @@ class ImageCaptionRunner(BaseRunner):
         model = ImageCaptionModel(model_config=self.model_config,
                                   data_reader=self.data_reader,
                                   mode=ModeKeys.TRAIN)
+        fetches = [model.summary_merged, model.loss, model.accuracy, model.train_op,
 
-        fetches = [model.summary_merged,
-                   model.loss, model.accuracy,
-                   model.train_op, model.input_seqs]
+                   model.image_ids, model.input_seqs, model.target_seqs, model.decoder_predictions]
+
         format_string = "{0}: epoch={1:2d}, batch={2:6d}, step={3:6d}," \
                         " loss={4:.6f}, acc={5:.6f}, elapsed={6:.6f}"
         with tf.Session(config=self.model_config.sess_config) as sess:
@@ -62,7 +72,9 @@ class ImageCaptionRunner(BaseRunner):
                         global_step = tf.train.global_step(sess, model.global_step_tensor)
                         # display and summarize training result
                         if global_step % model.model_config.display_and_summary_step == 0:
-                            batch_summary, loss, acc, _, phrases = result_batch
+                            batch_summary, loss, acc, _, image_ids, input_seqs, target_seqs, predicts = result_batch
+
+                            # self._display_content(image_ids, input_seqs, predicts, target_seqs)
                             # add train summaries
                             model.summary_writer.add_summary(
                                 summary=batch_summary, global_step=global_step)
@@ -88,6 +100,32 @@ class ImageCaptionRunner(BaseRunner):
                         break  # break the training while True
         pass
         # validation with current (such as training) session on validation data set
+
+    def _display_content(self, image_ids, input_seqs, predicts, target_seqs):
+
+        for idx, image_id in enumerate(image_ids):
+            if idx % 10 == 0:
+                input_seq = input_seqs[idx]
+                caption_byte_list = [self.index2token[token_id] for token_id in input_seq]
+                caption_text = ' '.join(caption_byte_list)
+
+                target = target_seqs[idx].tolist()
+                target_byte_list = [self.index2token[token_id]
+                                    for idx, token_id in enumerate(target)
+                                    # if idx < target.index(self.token_end_id)
+                                    ]
+                target_text = ' '.join(target_byte_list)
+
+                predict = predicts[idx].tolist()
+                predict_byte_list = [self.index2token[token_id]
+                                     for idx, token_id in enumerate(predict)
+                                     # if idx < predict.index(self.token_end_id)
+                                     ]
+
+                predict_text = ' '.join(predict_byte_list)
+
+                print("image_id={}, \n\tcaption=[{}]\n\ttarget= [{}]\n\tpredict=[{}]"
+                      .format(image_ids[idx], caption_text, target_text, predict_text))
 
     @timeit
     def _internal_eval(self, model, sess):
@@ -139,13 +177,10 @@ class ImageCaptionRunner(BaseRunner):
         infer_model = ImageCaptionModel(model_config=self.model_config,
                                         data_reader=self.data_reader,
                                         mode=ModeKeys.INFER)
-        index2token = self.data_reader.data_embedding.index2token
-
         model = infer_model
         fetches = [model.loss, model.accuracy,
-                   model.image_ids,
-                   model.input_seqs, model.target_seqs,
-                   model.predict_predictions]
+                   model.image_ids, model.input_seqs, model.target_seqs,
+                   model.decoder_predictions]
         format_string = "{}: batch={:6d}, step={:6d}, loss={:.6f}, acc={:.6f}, elapsed={:.6f}"
         with tf.Session(config=model.model_config.sess_config) as sess:
             model.summary_writer.add_graph(sess.graph)
@@ -182,17 +217,10 @@ class ImageCaptionRunner(BaseRunner):
                     batch += 1
                     global_step = tf.train.global_step(sess, model.global_step_tensor)
                     loss, acc, image_ids, input_seqs, target_seqs, predicts = result_batch
-                    for idx, image_id in enumerate(image_ids):
-                        caption_text = b' '.join(captions[idx])
-                        caption_text = caption_text.decode()
-                        predict = predicts[idx]
-                        predict_byte_list = [index2token[token_id] for token_id in predict]
-                        predict_text = ' '.join(predict_byte_list)
-                        print("image_id={}, \n\tcaption=[{}]\n\tpredict=[{}]"
-                              .format(image_ids[idx], caption_text, predict_text))
-                    # add train summaries
-                    # print(format_string.format(model.mode, batch, global_step, loss, acc,
-                    #                            time.time() - step_begin))
+                    self._display_content(image_ids=image_ids,
+                                          input_seqs=input_seqs,
+                                          target_seqs=target_seqs,
+                                          predicts=predicts)
                     step_begin = time.time()
                 except tf.errors.OutOfRangeError:  # ==> "End of training dataset"
                     print(" finished with {} batches, global_step={}, elapsed={} "
@@ -205,7 +233,7 @@ class ImageCaptionRunner(BaseRunner):
 def main(_):
     runner = ImageCaptionRunner()
     runner.train()
-    # runner.infer()
+    runner.infer()
 
 
 if __name__ == '__main__':

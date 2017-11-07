@@ -17,7 +17,7 @@ max_max_epoch = 100
 # state learning rate information and configuration
 
 learning_start_decay_step = 20000
-learning_rate = 1.0e-0
+learning_rate = 5.0e-0
 learning_rate_decay = 0.96
 learning_rate_step = 10000
 
@@ -25,7 +25,7 @@ dropout_keep_prob = 0.5
 initializer_scale = 0.08
 early_stopping = 100
 
-display_and_summary_step = 10
+display_and_summary_step = 20
 valid_step = 10000
 
 os.environ["CUDA_VISIBLE_DEVICES"] = '0'  # 指定第一块GPU可用
