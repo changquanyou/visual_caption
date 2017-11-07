@@ -58,6 +58,7 @@ class ImageCaptionRunner(BaseRunner):
                 while True:  # train each batch in a epoch
                     try:
                         result_batch = sess.run(fetches)  # run training step
+                        batch += 1
                         global_step = tf.train.global_step(sess, model.global_step_tensor)
                         # display and summarize training result
                         if global_step % model.model_config.display_and_summary_step == 0:
@@ -68,20 +69,6 @@ class ImageCaptionRunner(BaseRunner):
                             print(format_string.format(model.mode, epoch, batch, global_step, loss, acc,
                                                        time.time() - step_begin))
                             step_begin = time.time()
-                        batch += 1
-
-                        # # run internal_eval during training epoch
-                        # if global_step % self.model_config.valid_step == 0 and global_step > 0:
-                        #     try:
-                        #         valid_result = self._internal_eval(sess=sess)
-                        #     except tf.errors.OutOfRangeError:
-                        #         self.logger.info("finished validation in training step {}".format(global_step))
-                        #
-                        #     valid_acc = valid_result
-                        #     if valid_acc > max_acc:  # save the best model session
-                        #         self._save_model(sess=sess, global_step=global_step)
-                        #     print('training: epoch={}, step={}, validation: average_result ={}'
-                        #           .format(epoch, global_step, valid_result))
                     except tf.errors.OutOfRangeError:  # ==> "End of training dataset"
                         try:
                             valid_result = self._internal_eval(model=model, sess=sess)
@@ -191,19 +178,16 @@ class ImageCaptionRunner(BaseRunner):
                         model.target_lengths: target_lengths,
 
                     }
-                    result_batch = sess.run(fetches=fetches, feed_dict=feed_dict)  # run training step
+                    result_batch = sess.run(fetches=fetches, feed_dict=feed_dict)
                     batch += 1
                     global_step = tf.train.global_step(sess, model.global_step_tensor)
-                    # display and summarize training result
                     loss, acc, image_ids, input_seqs, target_seqs, predicts = result_batch
                     for idx, image_id in enumerate(image_ids):
                         caption_text = b' '.join(captions[idx])
                         caption_text = caption_text.decode()
-
                         predict = predicts[idx]
                         predict_byte_list = [index2token[token_id] for token_id in predict]
                         predict_text = ' '.join(predict_byte_list)
-
                         print("image_id={}, \n\tcaption=[{}]\n\tpredict=[{}]"
                               .format(image_ids[idx], caption_text, predict_text))
                     # add train summaries
