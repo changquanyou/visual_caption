@@ -30,12 +30,14 @@ class ImageCaptionDataReader(BaseDataReader):
 
     def _build_context_and_feature(self):
         self.context_features = {
-            self._data_config.visual_image_id_name: tf.FixedLenFeature([], dtype=tf.string),
-            self._data_config.visual_feature_name: tf.FixedLenFeature([], dtype=tf.string),
+            self._data_config.visual_image_id_name:
+                tf.FixedLenFeature([], dtype=tf.string),
+            self._data_config.visual_feature_name:
+                tf.FixedLenFeature([], dtype=tf.string),
         }
         self.sequence_features = {
             self._data_config.caption_text_name: tf.FixedLenSequenceFeature([], dtype=tf.string),
-            self._data_config.caption_ids_name: tf.FixedLenSequenceFeature([], dtype=tf.int64)
+            # self._data_config.caption_ids_name: tf.FixedLenSequenceFeature([], dtype=tf.int64)
         }
 
     def _mapping_dataset(self, dataset):

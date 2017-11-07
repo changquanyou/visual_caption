@@ -94,13 +94,12 @@ class ImageCaptionRunner(BaseRunner):
                         if valid_acc > max_acc:  # save the best model session
                             max_acc = valid_acc
                             model.save_model(sess=sess, global_step=global_step)
-                        print('training: epoch={}, step={}, validation: average_result ={}'
-                              .format(epoch, global_step, valid_result))
+                            print('training: epoch={}, step={}, validation: average_result ={}'
+                                  .format(epoch, global_step, valid_result))
                         print("training epoch={} finished with {} batches, global_step={}, elapsed={} "
                               .format(epoch, batch, global_step, time.time() - begin))
                         break  # break the training while True
         pass
-
         # validation with current (such as training) session on validation data set
 
     @timeit
@@ -131,7 +130,7 @@ class ImageCaptionRunner(BaseRunner):
                     print("valid: step={0:8d}, batch={1} loss={2:.4f}, acc={3:.4f}, elapsed={4:.4f}"
                           .format(global_step, batch_count, loss, acc, time.time() - step_begin))
                     step_begin = time.time()
-                if batch_count >= 50:
+                if batch_count >= 100:
                     break
             except tf.errors.OutOfRangeError:  # ==> "End of validation dataset"
                 print("validation finished : step={0}, batch={1}, elapsed={2:.4f}"
