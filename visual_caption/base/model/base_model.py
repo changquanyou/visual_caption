@@ -9,6 +9,7 @@ import os
 from abc import ABCMeta, abstractmethod
 
 import tensorflow as tf
+from tensorflow.contrib.learn import ModeKeys
 
 from visual_caption.utils.decorator_utils import timeit, define_scope
 
@@ -38,9 +39,10 @@ class BaseModel(object):
         # for model data pipeline
         self.batch_size = self.model_config.batch_size
         self.next_batch = self.data_reader.get_next_batch(batch_size=self.batch_size)
-        # self.train_init_op = self.data_reader.get_train_init_op()
-        # self.validation_init_op = self.data_reader.get_validation_init_op()
-        # self.test_init_op = self.data_reader.get_test_init_op()
+
+        self.initializer = tf.random_uniform_initializer(
+            minval=-self.model_config.initializer_scale,
+            maxval=self.model_config.initializer_scale)
 
         # build model
         self._build_model()
@@ -53,8 +55,8 @@ class BaseModel(object):
         """
         self._get_logger()
         self._build_global_step()
-        self._build_embeddings()
         self._build_inputs()
+        self._build_embeddings()
         self._build_graph()
         self._build_loss()
         self._build_optimizer()
@@ -126,25 +128,27 @@ class BaseModel(object):
     @define_scope(scope_name='gradients')
     def _build_gradients(self):
         """Clipping gradients of a model."""
-        trainables = tf.trainable_variables()
-        gradients = tf.gradients(self.loss, trainables)
-        clipped_gradients, gradient_norm = tf.clip_by_global_norm(
-            gradients, self.model_config.max_grad_norm)
-        self._gradients = clipped_gradients
-        tf.summary.scalar("grad_norm", gradient_norm)
-        tf.summary.scalar("clipped_gradient", tf.global_norm(clipped_gradients))
+        if not self.mode == ModeKeys.INFER:
+            trainables = tf.trainable_variables()
+            gradients = tf.gradients(self.loss, trainables)
+            clipped_gradients, gradient_norm = tf.clip_by_global_norm(
+                gradients, self.model_config.max_grad_norm)
+            self._gradients = clipped_gradients
+            tf.summary.scalar("grad_norm", gradient_norm)
+            tf.summary.scalar("clipped_gradient", tf.global_norm(clipped_gradients))
 
     @timeit
     @define_scope(scope_name='train_op')
     def _build_train_op(self):
         """
-        Set up the training ops.
-        """
-        trainables = tf.trainable_variables()
-        grads_and_vars = zip(self._gradients, trainables)
-        self.train_op = self.optimizer.apply_gradients(grads_and_vars=grads_and_vars,
-                                                       global_step=self.global_step_tensor,
-                                                       name='train_step')
+         Set up the training ops.
+         """
+        if not self.mode == ModeKeys.INFER:
+            trainables = tf.trainable_variables()
+            grads_and_vars = zip(self._gradients, trainables)
+            self.train_op = self.optimizer.apply_gradients(grads_and_vars=grads_and_vars,
+                                                           global_step=self.global_step_tensor,
+                                                           name='train_step')
 
     @timeit
     @define_scope(scope_name='summaries')

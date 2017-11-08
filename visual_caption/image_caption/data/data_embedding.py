@@ -104,8 +104,9 @@ class ImageCaptionDataEmbedding(object):
         self.token_embedding_matrix[idx] = np.zeros(shape=[self.data_config.embedding_dim_size])
         self.token2index[self.data_config.token_unknown] = idx
         self.index2token[idx] = self.data_config.token_unknown
-        self.vocab_size = len(self.vocab)
 
+        self.vocab_size = len(self.vocab)
+        self.embedding_size = self.data_config.embedding_dim_size
         pass
 
     def visualize(self, model):

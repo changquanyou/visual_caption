@@ -4,6 +4,7 @@ from __future__ import division
 from __future__ import print_function
 from __future__ import unicode_literals  # compatible with python3 unicode coding
 
+import os
 import time
 
 import tensorflow as tf
@@ -12,6 +13,8 @@ from tensorflow.contrib.learn import ModeKeys
 from visual_caption.base.base_runner import BaseRunner
 from visual_caption.image_caption.data.data_config import ImageCaptionDataConfig
 from visual_caption.image_caption.data.data_reader import ImageCaptionDataReader
+from visual_caption.image_caption.data.data_utils import ImageCaptionDataUtils
+from visual_caption.image_caption.feature.feature_manager import FeatureManager
 from visual_caption.image_caption.model.image_caption_config import ImageCaptionConfig
 from visual_caption.image_caption.model.image_caption_model import ImageCaptionModel
 from visual_caption.utils.decorator_utils import timeit
@@ -21,10 +24,10 @@ class ImageCaptionRunner(BaseRunner):
     def __init__(self):
         super(ImageCaptionRunner, self).__init__()
 
-        data_config = ImageCaptionDataConfig()
-        self.data_reader = ImageCaptionDataReader(data_config=data_config)
-        self.model_config = ImageCaptionConfig(data_config=data_config,
-                                               model_name=data_config.model_name)
+        self.data_config = ImageCaptionDataConfig()
+        self.data_reader = ImageCaptionDataReader(data_config=self.data_config)
+        self.model_config = ImageCaptionConfig(data_config=self.data_config,
+                                               model_name=self.data_config.model_name)
 
         self.index2token = self.data_reader.data_embedding.index2token
         self.token2index = self.data_reader.data_embedding.token2index
@@ -34,6 +37,8 @@ class ImageCaptionRunner(BaseRunner):
 
         self.token_begin_id = self.token2index[self.token_begin]
         self.token_end_id = self.token2index[self.token_end]
+
+        self.feature_manager = FeatureManager()
 
         pass
 
@@ -229,11 +234,67 @@ class ImageCaptionRunner(BaseRunner):
 
         pass
 
+    def test(self):
+
+        image_gen = self.get_test_images()
+        infer_model = ImageCaptionModel(model_config=self.model_config,
+                                        data_reader=self.data_reader,
+                                        mode=ModeKeys.INFER)
+        model = infer_model
+        fetches = [model.decoder_predictions]
+        with tf.Session(config=model.model_config.sess_config) as sess:
+            model.summary_writer.add_graph(sess.graph)
+            # CheckPoint State
+            if not model.restore_model(sess=sess):
+                init_op = tf.group(tf.local_variables_initializer(),
+                                   tf.global_variables_initializer())
+                sess.run(init_op)
+
+            sess.run(tf.tables_initializer())
+            begin = time.time()
+            infer_init_op = model.data_reader.get_valid_init_op()
+            sess.run(infer_init_op)  # initial infer data options
+            for batch, image_features in enumerate(image_gen):
+                feed_dict = {
+                    model.input_image_embeddings: image_features,
+                }
+                result_batch = sess.run(fetches=fetches, feed_dict=feed_dict)
+                predicts = result_batch
+                for idx, predict in enumerate(predicts):
+                    predict = predict.tolist()
+                    predict_byte_list = [self.index2token[token_id]
+                                         for idx, token_id in enumerate(predict)]
+                    predict_text = ' '.join(predict_byte_list)
+                    print("image_id=, predict=[{}]".format(predict_text))
+
+        pass
+
+    def get_test_images(self):
+        image_filenames = os.listdir(self.data_config.test_image_dir)
+        batch_size = 20
+        image_batch = list()
+        for filename in image_filenames:
+            image_file = os.path.join(self.data_config.test_image_dir, filename)
+            image_raw = ImageCaptionDataUtils.load_image_raw(image_file=image_file)
+            image_batch.append(image_raw)
+
+            if len(image_batch) == batch_size:
+                features = self.feature_manager.get_batch_features(image_batch)
+                yield features
+                image_batch = []
+
+        if len(image_batch) > 0:
+            features = self.feature_manager.get_batch_features(image_batch)
+            yield features
+        del image_batch
+        pass
+
 
 def main(_):
     runner = ImageCaptionRunner()
     runner.train()
-    runner.infer()
+    # runner.infer()
+    runner.test()
 
 
 if __name__ == '__main__':

@@ -8,7 +8,6 @@ import os
 from abc import ABCMeta, abstractmethod
 
 import tensorflow as tf
-from tensorflow.contrib.data import Iterator
 
 
 class BaseDataReader(object):
@@ -29,7 +28,7 @@ class BaseDataReader(object):
         :return:
         """
         dataset = self._get_dataset(self._data_config.train_data_dir)
-        data_iterator = Iterator.from_structure(
+        data_iterator = tf.data.Iterator.from_structure(
             output_types=dataset.output_types,
             output_shapes=dataset.output_shapes
         )
@@ -58,7 +57,7 @@ class BaseDataReader(object):
 
     def _get_dataset(self, data_dir):
         """
-        get TFRecordDataset from give data_dir and mapping them into dataset
+        get tf.data.TFRecordDataset from give data_dir and mapping them into dataset
         :param data_dir:
         :return:
         """
@@ -67,7 +66,7 @@ class BaseDataReader(object):
         for filename in filenames:
             data_file = os.path.join(data_dir, filename)
             data_files.append(data_file)
-        dataset = tf.contrib.data.TFRecordDataset(data_files)
+        dataset = tf.data.TFRecordDataset(data_files)
         # parsing tf_record
         dataset = dataset.map(self._parse_tf_example)
         # mapping dataset

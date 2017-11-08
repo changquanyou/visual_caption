@@ -39,9 +39,9 @@ class ImageCaptionDataConfig(BaseDataConfig):
         self.validation_tf_data_file = os.path.join(self.validation_data_dir, "image_caption_validation")
 
         # for test
-        self.test_rawdata_dir = os.path.join(self.model_data_dir, "ai_challenger_caption_test_20170910")
+        self.test_rawdata_dir = os.path.join(self.model_data_dir, "ai_challenger_caption_test1_20170923")
         self.test_json_data = os.path.join(self.test_rawdata_dir, "caption_test_annotations_20170910.json")
-        self.test_image_dir = os.path.join(self.test_rawdata_dir, "caption_test_images_20170910")
+        self.test_image_dir = os.path.join(self.test_rawdata_dir, "caption_test1_images_20170923")
         self.test_data_dir = os.path.join(self.model_data_dir, "test")
         self.test_tf_data_file = os.path.join(self.test_data_dir, "image_caption_test")
 
@@ -51,7 +51,7 @@ class ImageCaptionDataConfig(BaseDataConfig):
         self.caption_word_txt = os.path.join(self.caption_dir, "caption_word.txt")
 
         # for embeddings
-        self.embedding_dim_size = 100  # default dim size
+        self.embedding_dim_size = 300  # default dim size
         self.embedding_dir = os.path.join(self.model_data_dir, "embeddings")
         char2vec_file_name = "char2vec_" + str(self.embedding_dim_size) + ".model"
         self.char2vec_model = os.path.join(self.embedding_dir, char2vec_file_name)

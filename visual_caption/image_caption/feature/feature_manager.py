@@ -8,6 +8,7 @@ import os
 
 import tensorflow as tf
 from scipy.misc import imresize
+from sklearn.preprocessing import normalize
 
 from visual_caption.image_caption.feature.vgg19 import Vgg19
 
@@ -24,7 +25,7 @@ class FeatureManager(object):
         self.input_images = tf.placeholder(tf.float32, [None, 224, 224, 3], name="input_images")
 
         if sess is None:
-            gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=0.9)
+            gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=0.6)
             sess_config = tf.ConfigProto(gpu_options=gpu_options,
                                          allow_soft_placement=True,
                                          log_device_placement=False)
@@ -34,7 +35,14 @@ class FeatureManager(object):
 
         self.vgg_model.build(self.input_images)
 
-    def get_vgg_feature(self, image_batch):
+    def get_feature(self, image_rawdata):
+        resized_image = imresize(image_rawdata, self.shape)
+        feed_dict = {self.input_images: [resized_image]}
+        fc7 = self.sess.run(self.vgg_model.fc7, feed_dict=feed_dict)
+        fc7 = normalize(fc7)
+        return fc7[0]
+
+    def get_batch_features(self, image_batch):
         image_rawdata_batch = []
         for img in image_batch:
             # print("img.shape={}".format(img.shape))
@@ -43,6 +51,7 @@ class FeatureManager(object):
 
         feed_dict = {self.input_images: image_rawdata_batch}
         fc7 = self.sess.run(self.vgg_model.fc7, feed_dict=feed_dict)
-        print("shape={}".format(fc7.shape))
+        fc7 = normalize(fc7)
+        # print("shape={}".format(fc7.shape))
         # result = np.asarray(fc7)
         return fc7
