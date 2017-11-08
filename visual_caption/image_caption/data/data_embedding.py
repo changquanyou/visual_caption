@@ -13,6 +13,7 @@ from tensorflow.contrib.tensorboard.plugins import projector
 
 from visual_caption.image_caption.data.data_config import ImageCaptionDataConfig
 from visual_caption.image_caption.data.data_loader import ImageCaptionDataLoader
+from visual_caption.utils.decorator_utils import timeit
 
 
 class ImageCaptionDataEmbedding(object):
@@ -52,6 +53,7 @@ class ImageCaptionDataEmbedding(object):
 
         pass
 
+
     def build_char_all(self):
         """
         generate char txt file
@@ -76,6 +78,7 @@ class ImageCaptionDataEmbedding(object):
             model.save(model_file)
             print("Generated token2vec model to {}".format(model_file))
 
+    @timeit
     def load_embeddings(self):
         """
         load char2vec or word2vec model for token embeddings

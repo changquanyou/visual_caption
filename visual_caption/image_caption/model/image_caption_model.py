@@ -28,17 +28,16 @@ class ImageCaptionModel(BaseModel):
     @define_scope(scope_name='embeddings')
     def _build_embeddings(self):
         self._data_embedding = ImageCaptionDataEmbedding()
-
         with tf.variable_scope("seq_embedding"), tf.device("/cpu:0"):
             self.embedding_map = tf.Variable(self._data_embedding.token_embedding_matrix,
                                              dtype=self.model_config.data_type,
                                              trainable=self.model_config.train_embeddings,
                                              name='embedding_map')
-            if not self.mode == ModeKeys.INFER:
-                self.input_seq_embeddings = tf.nn.embedding_lookup(
-                    params=self.embedding_map, ids=self.input_seqs)
-                self.target_seq_embeddings = tf.nn.embedding_lookup(
-                    params=self.embedding_map, ids=self.target_seqs)
+        if not self.mode == ModeKeys.INFER:
+            self.input_seq_embeddings = tf.nn.embedding_lookup(
+                params=self.embedding_map, ids=self.input_seqs)
+            self.target_seq_embeddings = tf.nn.embedding_lookup(
+                params=self.embedding_map, ids=self.target_seqs)
 
         pass
 
@@ -109,26 +108,22 @@ class ImageCaptionModel(BaseModel):
         # encoder_inputs = self.input_seq_embeddings
         encoder_inputs = image_embedding_seqs
 
-        with tf.variable_scope("encoder_cell", initializer=self.initializer) as encoder_rnn:
-            # Feed the image embeddings to set the initial RNN state.
-            rnn_cell = self.__create_rnn_cell(num_hidden_unit)
-            zero_state = rnn_cell.zero_state(batch_size=self.batch_size,
-                                             dtype=tf.float32)
-            _, initial_state = rnn_cell(self.input_image_embeddings, zero_state)
-            # forward RNN cell
-            cell_fw = self.__create_rnn_cell(num_hidden_unit)
-            # backward RNN cell
-            cell_bw = self.__create_rnn_cell(num_hidden_unit)
-            outputs, outputs_states = tf.nn.bidirectional_dynamic_rnn(
-                cell_fw=cell_fw, cell_bw=cell_bw, inputs=encoder_inputs,
-                # sequence_length=self.input_lengths,
-                initial_state_fw=initial_state,
-                initial_state_bw=initial_state,
-                dtype=data_type
-            )
-
-        # Allow the encoder_rnn variables to be reused.
-        encoder_rnn.reuse_variables()
+        # Feed the image embeddings to set the initial RNN state.
+        rnn_cell = self.__create_rnn_cell(num_hidden_unit)
+        zero_state = rnn_cell.zero_state(batch_size=self.batch_size,
+                                         dtype=tf.float32)
+        _, initial_state = rnn_cell(self.input_image_embeddings, zero_state)
+        # forward RNN cell
+        cell_fw = self.__create_rnn_cell(num_hidden_unit)
+        # backward RNN cell
+        cell_bw = self.__create_rnn_cell(num_hidden_unit)
+        outputs, outputs_states = tf.nn.bidirectional_dynamic_rnn(
+            cell_fw=cell_fw, cell_bw=cell_bw, inputs=encoder_inputs,
+            # sequence_length=self.input_lengths,
+            initial_state_fw=initial_state,
+            initial_state_bw=initial_state,
+            dtype=data_type
+        )
 
         self.encoder_outputs = tf.concat(outputs, -1)
         self.encoder_final_state = tf.concat(outputs_states, -1)
@@ -139,7 +134,6 @@ class ImageCaptionModel(BaseModel):
 
         encoder_outputs = self.encoder_outputs
         encoder_final_state = self.encoder_final_state
-
 
         batch_size = self.batch_size
         num_units = self.model_config.num_hidden_unit
@@ -154,57 +148,42 @@ class ImageCaptionModel(BaseModel):
         end_token = token2index[token_end]
         decoder_embedding = self.embedding_map
 
+        decoder_cell = self.__create_rnn_cell(num_units * 2)
+        decoder_initial_state = encoder_final_state
+        # decoder_cell, decoder_initial_state = self._attention_cell(
+        #     decoder_cell=decoder_cell,
+        #     encoder_outputs=encoder_outputs,
+        #     decoder_initial_state=decoder_initial_state,
+        #     batch_size=batch_size)
         # Output projection layer to convert cell_outputs to logits
-        with tf.variable_scope("decoder/output_projection"):
-            self.output_layer = Dense(vocab_size, name='output_projection')
+        self.output_layer = Dense(vocab_size, name='output_projection')
+        if self.mode == ModeKeys.INFER:
+            helper = GreedyEmbeddingHelper(embedding=decoder_embedding,
+                                           start_tokens=tf.fill([batch_size],
+                                                                token2index[token_begin]),
+                                           end_token=end_token)
+        else:  # for train or eval helper
+            target_lengths = self.target_lengths
+            # image_embedding_seqs = tf.expand_dims(input=self.input_image_embeddings, axis=1)
+            # image_embedding_seqs = tf.tile(image_embedding_seqs,
+            #                                multiples=[1, tf.reduce_max(target_lengths), 1])
+            # target_seq_embeddings = tf.concat(values=[self.target_seq_embeddings,
+            #                                           image_embedding_seqs],
+            #                                   axis=-1)
 
-        with tf.variable_scope("decoder_cell", initializer=self.initializer) as decoder_rnn_scope:
-            decoder_cell = self.__create_rnn_cell(num_units * 2)
-            decoder_initial_state = encoder_final_state
+            target_seq_embeddings = self.target_seq_embeddings
+            target_seq_embeddings = tf.nn.l2_normalize(target_seq_embeddings, dim=-1)
 
-        decoder_rnn_scope.reuse_variables()
+            helper = seq2seq.TrainingHelper(inputs=target_seq_embeddings,
+                                            sequence_length=target_lengths,
+                                            name='training_helper')
 
-        with tf.variable_scope('decoder_helper', reuse=True):
-            if self.mode == ModeKeys.INFER:  # for inference
-                helper = GreedyEmbeddingHelper(embedding=decoder_embedding,
-                                               start_tokens=tf.fill([batch_size],
-                                                                    token2index[token_begin]),
-                                               end_token=end_token)
-            else:  # for train or eval helper
-                target_lengths = self.target_lengths
-                image_embedding_seqs = tf.expand_dims(input=self.input_image_embeddings, axis=1)
-
-                image_embedding_seqs = tf.tile(image_embedding_seqs,
-                                               multiples=[1, tf.reduce_max(target_lengths), 1])
-
-                image_embedding_seqs = tf.multiply(image_embedding_seqs, 0.001)
-                target_seq_embeddings = tf.concat(values=[self.target_seq_embeddings,
-                                                          image_embedding_seqs],
-                                                  axis=-1, name="target_seq_embeddings")
-                # target_seq_embeddings = self.target_seq_embeddings
-                helper = seq2seq.TrainingHelper(inputs=target_seq_embeddings,
-                                                sequence_length=target_lengths,
-                                                name='training_helper')
-
-            if self.mode == ModeKeys.INFER and beam_width > 0:
-                decoder = seq2seq.BeamSearchDecoder(cell=decoder_cell,
-                                                    embedding=decoder_embedding,
-                                                    start_tokens=tf.fill([batch_size], token2index[token_begin]),
-                                                    end_token=end_token,
-                                                    beam_width=beam_width,
-                                                    initial_state=decoder_initial_state,
-                                                    output_layer=self.output_layer,
-                                                    length_penalty_weight=0.0)
-            else:
-                decoder = seq2seq.BasicDecoder(cell=decoder_cell,
-                                               helper=helper,
-                                               initial_state=decoder_initial_state,
-                                               output_layer=self.output_layer)
+        decoder = seq2seq.BasicDecoder(cell=decoder_cell, helper=helper,
+                                       initial_state=decoder_initial_state,
+                                       output_layer=self.output_layer)
 
         outputs, output_states, output_lengths = seq2seq.dynamic_decode(
-            decoder=decoder, maximum_iterations=self.max_seq_length,
-            scope="dynamic_decode"
-        )
+            decoder=decoder, maximum_iterations=self.max_seq_length)
 
         if beam_width > 0:
             logits = tf.no_op()
@@ -223,10 +202,8 @@ class ImageCaptionModel(BaseModel):
                         decoder_initial_state,
                         batch_size):
 
-        source_sequence_length = self.input_lengths
-
+        source_sequence_length = self.target_lengths
         dtype = self.encoder_outputs.dtype
-
         attention_mechanism = create_attention_mechanism(
             attention_option=self.model_config.attention_mechanism,
             num_units=self.model_config.num_attention_unit,
@@ -294,7 +271,7 @@ class ImageCaptionModel(BaseModel):
         # masks: masking for valid and padded time steps, [batch_size, max_time_step + 1]
         with tf.variable_scope('output'):
             self.logits = self.decoder_outputs
-            if not self.mode==ModeKeys.INFER:
+            if not self.mode == ModeKeys.INFER:
                 weights = tf.sequence_mask(lengths=self.target_lengths,
                                            maxlen=tf.reduce_max(self.target_lengths),
                                            dtype=self.decoder_outputs.dtype,
@@ -314,7 +291,7 @@ class ImageCaptionModel(BaseModel):
 
                 batch_accuracy = tf.div(tf.reduce_sum(
                     tf.multiply(tf.cast(correct_prediction, tf.float32), weights)),
-                                        tf.reduce_sum(weights), name="batch_accuracy")
+                    tf.reduce_sum(weights), name="batch_accuracy")
                 self.accuracy = batch_accuracy
                 tf.summary.scalar("accuracy", self.accuracy)
 
