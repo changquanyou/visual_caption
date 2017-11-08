@@ -258,7 +258,7 @@ class ImageCaptionRunner(BaseRunner):
                 feed_dict = {
                     model.input_image_embeddings: image_features,
                 }
-                result_batch = sess.run(fetches=fetches, feed_dict=feed_dict)
+                [result_batch] = sess.run(fetches=fetches, feed_dict=feed_dict)
                 predicts = result_batch
                 for idx, predict in enumerate(predicts):
                     predict = predict.tolist()

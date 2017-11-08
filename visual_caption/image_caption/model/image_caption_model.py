@@ -161,26 +161,8 @@ class ImageCaptionModel(BaseModel):
         with tf.variable_scope("decoder_cell", initializer=self.initializer) as decoder_rnn_scope:
             decoder_cell = self.__create_rnn_cell(num_units * 2)
             decoder_initial_state = encoder_final_state
-            # if attention mechanism is given, wrap cell with attention mechanism
-            # if self.model_config.attention_mechanism:
-            #     decoder_cell, decoder_initial_state = self._attention_cell(
-            #         decoder_cell=decoder_cell,
-            #         encoder_outputs=encoder_outputs,
-            #         decoder_initial_state=decoder_initial_state,
-            #         batch_size=batch_size
-            #     )
-                # Allow the encoder_rnn variables to be reused.
 
         decoder_rnn_scope.reuse_variables()
-
-        image_embedding_seqs = tf.expand_dims(input=self.input_image_embeddings, axis=1)
-        image_embedding_seqs = tf.tile(image_embedding_seqs,
-                                       multiples=[1, self.max_seq_length, 1])
-        image_embedding_seqs = tf.multiply(image_embedding_seqs, 0.001)
-
-        # target_seq_embeddings = tf.concat(values=[self.target_seq_embeddings, image_embedding_seqs],
-        #                                   axis=-1, name="target_seq_embeddings")
-
 
         with tf.variable_scope('decoder_helper', reuse=True):
             if self.mode == ModeKeys.INFER:  # for inference
@@ -190,7 +172,16 @@ class ImageCaptionModel(BaseModel):
                                                end_token=end_token)
             else:  # for train or eval helper
                 target_lengths = self.target_lengths
-                target_seq_embeddings = self.target_seq_embeddings
+                image_embedding_seqs = tf.expand_dims(input=self.input_image_embeddings, axis=1)
+
+                image_embedding_seqs = tf.tile(image_embedding_seqs,
+                                               multiples=[1, tf.reduce_max(target_lengths), 1])
+
+                image_embedding_seqs = tf.multiply(image_embedding_seqs, 0.001)
+                target_seq_embeddings = tf.concat(values=[self.target_seq_embeddings,
+                                                          image_embedding_seqs],
+                                                  axis=-1, name="target_seq_embeddings")
+                # target_seq_embeddings = self.target_seq_embeddings
                 helper = seq2seq.TrainingHelper(inputs=target_seq_embeddings,
                                                 sequence_length=target_lengths,
                                                 name='training_helper')
@@ -300,14 +291,9 @@ class ImageCaptionModel(BaseModel):
     @define_scope(scope_name="losses")
     def _build_loss(self):
         # Compute logits and weights
-
         # masks: masking for valid and padded time steps, [batch_size, max_time_step + 1]
-
-
-        # _output_layer = Dense(vocab_size, name='output_layer')
         with tf.variable_scope('output'):
             self.logits = self.decoder_outputs
-
             if not self.mode==ModeKeys.INFER:
                 weights = tf.sequence_mask(lengths=self.target_lengths,
                                            maxlen=tf.reduce_max(self.target_lengths),
