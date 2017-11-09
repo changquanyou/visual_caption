@@ -21,7 +21,7 @@ class ImageCaptionConfig(BaseModelConfig):
         # for hidden unit
         self.unit_type = "lstm"  # RNN Cell unit type : ‘lstm’,'gru' or 'nas'
         self.num_layers = 1  # number of hidden layers
-        self.num_hidden_unit = 64  # number of neural units in each hidden layers
+        self.num_hidden_unit = 300 # number of neural units in each hidden layers
 
         self.length_max_output = 64
 

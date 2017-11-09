@@ -20,7 +20,7 @@ class BaseDataConfig(BaseConfig):
         """set default model dirs"""
 
         self.builder_batch_size = self.batch_size
-        self.reader_batch_size = self.batch_size * 3
+        self.reader_batch_size = self.batch_size * 5
         self.mode = mode
 
         """set default model data dirs"""

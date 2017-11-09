@@ -1,18 +1,6 @@
-# Copyright 2016 The TensorFlow Authors. All Rights Reserved.
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-# ==============================================================================
-"""Class for generating captions from an image-to-text model."""
+"""Class for generating captions from an image-to-text model.
+   This is based on Google's https://github.com/tensorflow/models/blob/master/im2txt/im2txt/inference_utils/caption_generator.py
+"""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -29,7 +17,6 @@ class Caption(object):
 
     def __init__(self, sentence, state, logprob, score, metadata=None):
         """Initializes the Caption.
-
         Args:
           sentence: List of word ids in the caption.
           state: Model state after generating the previous word.
@@ -86,12 +73,9 @@ class TopN(object):
 
     def extract(self, sort=False):
         """Extracts all elements from the TopN. This is a destructive operation.
-
         The only method that can be called immediately after extract() is reset().
-
         Args:
           sort: Whether to return the elements in descending sorted order.
-
         Returns:
           A list of data; the top n elements provided to the set.
         """
@@ -114,10 +98,9 @@ class CaptionGenerator(object):
                  model,
                  vocab,
                  beam_size=3,
-                 max_caption_length=20,
+                 max_caption_length=24,
                  length_normalization_factor=0.0):
         """Initializes the generator.
-
         Args:
           model: Object encapsulating a trained image-to-text model. Must have
             methods feed_image() and inference_step(). For example, an instance of
@@ -137,22 +120,47 @@ class CaptionGenerator(object):
         self.max_caption_length = max_caption_length
         self.length_normalization_factor = length_normalization_factor
 
-    def beam_search(self, sess, encoded_image):
-        """Runs beam search caption generation on a single image.
+    def _feed_image(self, sess, feature):
+        # get initial state using image feature
+        feed_dict = {self.model.image_feature: feature,
+                     self.model.keep_prob: 1.0}
+        state = sess.run(self.model.initial_state, feed_dict=feed_dict)
+        return state
 
+    def _inference_step(self, sess, input_feed_list, state_feed_list, max_caption_length):
+
+        mask = np.zeros((1, max_caption_length))
+        mask[:, 0] = 1
+        softmax_outputs = []
+        new_state_outputs = []
+
+        for input, state in zip(input_feed_list, state_feed_list):
+            feed_dict = {self.model.input_seqs: input,
+                         self.model.state_feed: state,
+                         self.model.input_mask: mask,
+                         self.model.keep_prob: 1.0}
+            softmax, new_state = sess.run(fetches=[self.model.softmax,
+                                                   self.model.state_feed],
+                                          feed_dict=feed_dict)
+            softmax_outputs.append(softmax)
+            new_state_outputs.append(new_state)
+
+        return softmax_outputs, new_state_outputs, None
+
+    def beam_search(self, sess, feature):
+        """Runs beam search caption generation on a single image.
         Args:
           sess: TensorFlow Session object.
-          encoded_image: An encoded image string.
-
+          feature: extracted V3 feature of one image.
         Returns:
           A list of Caption sorted by descending score.
         """
         # Feed in the image to get the initial state.
-        initial_state = self.model.feed_image(sess, encoded_image)
+        initial_state = self._feed_image(sess, feature)
 
         initial_beam = Caption(
-            sentence=[self.vocab.start_id],
-            state=initial_state[0],
+            sentence=[self.vocab['<S>']],
+            state=initial_state,
             logprob=0.0,
             score=0.0,
             metadata=[""])
@@ -164,15 +172,16 @@ class CaptionGenerator(object):
         for _ in range(self.max_caption_length - 1):
             partial_captions_list = partial_captions.extract()
             partial_captions.reset()
-            input_feed = np.array([c.sentence[-1] for c in partial_captions_list])
-            state_feed = np.array([c.state for c in partial_captions_list])
+            input_feed = [np.array([c.sentence[-1]]).reshape(1, 1) for c in partial_captions_list]
+            state_feed = [c.state for c in partial_captions_list]
 
-            softmax, new_states, metadata = self.model.inference_step(sess,
-                                                                      input_feed,
-                                                                      state_feed)
+            softmax, new_states, metadata = self._inference_step(sess,
+                                                                 input_feed,
+                                                                 state_feed,
+                                                                 self.max_caption_length)
 
             for i, partial_caption in enumerate(partial_captions_list):
-                word_probabilities = softmax[i]
+                word_probabilities = softmax[i][0]
                 state = new_states[i]
                 # For this partial caption, get the beam_size most probable next words.
                 words_and_probs = list(enumerate(word_probabilities))
@@ -189,7 +198,7 @@ class CaptionGenerator(object):
                         metadata_list = partial_caption.metadata + [metadata[i]]
                     else:
                         metadata_list = None
-                    if w == self.vocab.end_id:
+                    if w == self.vocab['</S>']:
                         if self.length_normalization_factor > 0:
                             score /= len(sentence) ** self.length_normalization_factor
                         beam = Caption(sentence, state, logprob, score, metadata_list)

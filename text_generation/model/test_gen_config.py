@@ -9,12 +9,10 @@ from  visual_caption.base.model.base_model_config import BaseConfig
 
 class TextGenConfig(BaseConfig):
     def __init__(self, model_name):
-        super().__init__(model_name=model_name)
-        self.hidden_layer_num = 2
-        self.hidden_neural_num = 512
+        super(TextGenConfig, self).__init__()
+        self.num_layers = 2
+        self.num_units = 512
         self.train_embeddings = False
-        self.vocab_size=4350
-        self.embedding_size=300
-        self._input_phrases=0
+        self.model_name = model_name
 
     pass

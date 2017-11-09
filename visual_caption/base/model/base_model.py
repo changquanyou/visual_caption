@@ -47,6 +47,8 @@ class BaseModel(object):
         # build model
         self._build_model()
 
+
+
     @timeit
     def _build_model(self):
         """
@@ -64,7 +66,7 @@ class BaseModel(object):
         self._build_train_op()
         self._build_summaries()
         # create a model saver to save or restore model
-        self.model_server = tf.train.Saver()
+
 
     @timeit
     def _get_logger(self):
@@ -162,7 +164,8 @@ class BaseModel(object):
         checkpoint_dir = self.model_config.checkpoint_dir
         if not os.path.isdir(checkpoint_dir):
             os.makedirs(checkpoint_dir)
-        self.model_server.save(sess=sess,
+        model_server = tf.train.Saver()
+        model_server.save(sess=sess,
                                save_path=os.path.join(checkpoint_dir, model_name),
                                global_step=global_step)
         self.logger.info("save model {} at step {}".format(model_name, global_step))
@@ -174,6 +177,7 @@ class BaseModel(object):
         :param checkpoint_path: if checkpoint is None, restore from last checkpoint
         :return:
         """
+        model_server = tf.train.Saver()
         print(" [*] Reading checkpoint...")
         if checkpoint_path is None:
             checkpoint_path = tf.train.latest_checkpoint(self.model_config.checkpoint_dir)
@@ -181,7 +185,7 @@ class BaseModel(object):
             print("restoring model parameters from {}".format(checkpoint_path))
             # all_vars = tf.global_variables()
             # model_vars = [k for k in all_vars if k.name.startswith(model_name)]
-            self.model_server.restore(sess, checkpoint_path)
+            model_server.restore(sess, checkpoint_path)
             print("model  restored".format())
             return True
         else:
