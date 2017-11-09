@@ -257,19 +257,20 @@ class RNNCaptionRunner(BaseRunner):
                 batch_size = image_features.shape[0]
                 for i in range(batch_size):
                     image_feature = image_features[i].reshape(1, -1)
-                    predicts = generator.beam_search(sess, image_feature)
-                    for idx, predict in enumerate(predicts):
-                        caption = [self.index2token[idx] for idx in predict.sentence]
-                        print(caption)
+                    predict_captions = generator.beam_search(sess, image_feature)
+                    for idx, caption in enumerate(predict_captions):
+                        caption_text = [self.index2token[idx] for idx in caption.sentence]
+                        print("beam_idx:{:1d}, logprob:{:.4f}, caption:{}"
+                              .format(idx, caption.logprob, ''.join(caption_text)))
 
     def get_test_images(self):
         if not self.feature_manager:
             self.feature_manager = FeatureManager()
-        image_filenames = os.listdir(self.data_config.test_image_dir)
+        image_filenames = os.listdir(self.data_config.train_image_dir)
         batch_size = 20
         image_batch = list()
         for filename in image_filenames:
-            image_file = os.path.join(self.data_config.test_image_dir, filename)
+            image_file = os.path.join(self.data_config.train_image_dir, filename)
             image_raw = ImageCaptionDataUtils.load_image_raw(image_file=image_file)
             image_batch.append(image_raw)
             if len(image_batch) == batch_size:

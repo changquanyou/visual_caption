@@ -105,8 +105,8 @@ class ImageRNNModel(BaseModel):
         if self.mode == "train":
             rnn_cell = tf.contrib.rnn.DropoutWrapper(
                 rnn_cell,
-                input_keep_prob=self.model_config.lstm_dropout_keep_prob,
-                output_keep_prob=self.model_config.lstm_dropout_keep_prob)
+                input_keep_prob=self.model_config.dropout_keep_prob,
+                output_keep_prob=self.model_config.dropout_keep_prob)
 
         with tf.variable_scope("RNN", initializer=self.initializer) as rnn_scope:
             # Feed the image embeddings to set the initial LSTM state.
@@ -133,10 +133,9 @@ class ImageRNNModel(BaseModel):
 
         else:
             # Run the batch of sequence embeddings through the LSTM.
-            sequence_length = tf.reduce_sum(self.input_mask, 1)
             outputs, self.final_state = tf.nn.dynamic_rnn(cell=rnn_cell,
                                                inputs=self.input_seq_embeddings,
-                                               sequence_length=sequence_length,
+                                               sequence_length=self.input_lengths,
                                                initial_state=initial_state,
                                                dtype=tf.float32,
                                                scope=rnn_scope)
