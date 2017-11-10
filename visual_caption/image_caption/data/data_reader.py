@@ -18,15 +18,15 @@ class ImageCaptionDataReader(BaseDataReader):
         Read data for train, validation, test dataset with embedding model
     """
 
-    def __init__(self, data_config=ImageCaptionDataConfig()):
+    def __init__(self, data_config):
         self._data_config = data_config
-
+        self.data_embedding = ImageCaptionDataEmbedding()
         self._vocab_table = lookup_ops.index_table_from_file(
             vocabulary_file=self._data_config.vocab_file, default_value=0)
+        super(ImageCaptionDataReader, self).__init__(
+            data_config=data_config)
 
-        self.data_embedding = ImageCaptionDataEmbedding()
 
-        super(ImageCaptionDataReader, self).__init__(data_config=data_config)
 
     def _build_context_and_feature(self):
         self.context_features = {
@@ -83,7 +83,7 @@ class ImageCaptionDataReader(BaseDataReader):
             return x.padded_batch(batch_size=self._batch_size,
                                   padded_shapes=(
                                       tf.TensorShape([]),  # image_id
-                                      tf.TensorShape([4096]),  # image_feature
+                                      tf.TensorShape([self._data_config.visual_feature_size]),  # image_feature
 
                                       tf.TensorShape([None]),  # caption
                                       tf.TensorShape([None]),  # target
@@ -117,12 +117,23 @@ class ImageCaptionDataReader(BaseDataReader):
 
         # for vgg19 fc7
         visual_feature = tf.decode_raw(visual_feature, tf.float32)
-        image_feature = tf.reshape(visual_feature, [4096])
+        image_feature = tf.reshape(visual_feature, [self._data_config.visual_feature_size])
 
         caption = sequence[self._data_config.caption_text_name]
         # caption_ids = sequence[self._data_config.caption_ids_name]
         data = (image_id, image_feature, caption)
         return data
+
+
+class ImageCaptionFullDataReader():
+    def get_data_iterator(self):
+        pass
+
+    def get_next_batch(self):
+        pass
+
+
+
 
 
 def main(_):

@@ -14,7 +14,7 @@ from visual_caption.base.base_runner import BaseRunner
 from visual_caption.image_caption.data.data_config import ImageCaptionDataConfig
 from visual_caption.image_caption.data.data_reader import ImageCaptionDataReader
 from visual_caption.image_caption.data.data_utils import ImageCaptionDataUtils
-from visual_caption.image_caption.feature.feature_manager import FeatureManager
+from visual_caption.image_caption.feature.vgg_feature_manager import FeatureManager
 from visual_caption.image_caption.inference.caption_generator import CaptionGenerator
 from visual_caption.image_caption.model.image_caption_config import ImageCaptionConfig
 from visual_caption.image_caption.model.image_rnn_model import ImageRNNModel

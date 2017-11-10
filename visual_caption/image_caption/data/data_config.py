@@ -20,30 +20,45 @@ class ImageCaptionDataConfig(BaseDataConfig):
     """Wrapper class for model hyperparameters."""
 
     def __init__(self, mode=MODE, model_name=MODEL_NAME):
-        super(ImageCaptionDataConfig,self).__init__(
+        super(ImageCaptionDataConfig, self).__init__(
             mode=mode, model_name=model_name)
+        self.tf_data_dir = os.path.join(self.model_data_dir, '')
 
         # for train
-        self.train_rawdata_dir = os.path.join(self.model_data_dir, "ai_challenger_caption_train_20170902")
-        self.train_json_data = os.path.join(self.train_rawdata_dir, "caption_train_annotations_20170902.json")
-        self.train_image_dir = os.path.join(self.train_rawdata_dir, "caption_train_images_20170902")
-        self.train_data_dir = os.path.join(self.model_data_dir, "train")
-        self.train_tf_data_file = os.path.join(self.train_data_dir, "image_caption_train")
+        self.train_rawdata_dir = os.path.join(self.model_data_dir,
+                                              "ai_challenger_caption_train_20170902")
+        self.train_json_data = os.path.join(self.train_rawdata_dir,
+                                            "caption_train_annotations_20170902.json")
+        self.train_image_dir = os.path.join(self.train_rawdata_dir,
+                                            "caption_train_images_20170902")
+        self.train_data_dir = os.path.join(self.tf_data_dir,
+                                           "train")
+        self.train_tf_data_file = os.path.join(self.train_data_dir,
+                                               "image_caption_train")
 
         # for validation
-        self.validation_rawdata_dir = os.path.join(self.model_data_dir, "ai_challenger_caption_validation_20170910")
-        self.validation_json_data = os.path.join(self.validation_rawdata_dir,
+        self.valid_rawdata_dir = os.path.join(self.model_data_dir,
+                                                   "ai_challenger_caption_validation_20170910")
+        self.valid_json_data = os.path.join(self.valid_rawdata_dir,
                                                  "caption_validation_annotations_20170910.json")
-        self.validation_image_dir = os.path.join(self.validation_rawdata_dir, "caption_validation_images_20170910")
-        self.validation_data_dir = os.path.join(self.model_data_dir, "valid")
-        self.validation_tf_data_file = os.path.join(self.validation_data_dir, "image_caption_validation")
+        self.valid_image_dir = os.path.join(self.valid_rawdata_dir,
+                                                 "caption_validation_images_20170910")
+        self.valid_data_dir = os.path.join(self.tf_data_dir,
+                                                "valid")
+        self.valid_tf_data_file = os.path.join(self.valid_data_dir,
+                                                    "image_caption_validation")
 
         # for test
-        self.test_rawdata_dir = os.path.join(self.model_data_dir, "ai_challenger_caption_test1_20170923")
-        self.test_json_data = os.path.join(self.test_rawdata_dir, "caption_test_annotations_20170910.json")
-        self.test_image_dir = os.path.join(self.test_rawdata_dir, "caption_test1_images_20170923")
-        self.test_data_dir = os.path.join(self.model_data_dir, "test")
-        self.test_tf_data_file = os.path.join(self.test_data_dir, "image_caption_test")
+        self.test_rawdata_dir = os.path.join(self.model_data_dir,
+                                             "ai_challenger_caption_test1_20170923")
+        self.test_json_data = os.path.join(self.test_rawdata_dir,
+                                           "caption_test_annotations_20170910.json")
+        self.test_image_dir = os.path.join(self.test_rawdata_dir,
+                                           "caption_test1_images_20170923")
+        self.test_data_dir = os.path.join(self.tf_data_dir,
+                                          "test")
+        self.test_tf_data_file = os.path.join(self.test_data_dir,
+                                              "image_caption_test")
 
         # for caption txt data
         self.caption_dir = os.path.join(self.model_data_dir, "captions")
@@ -57,7 +72,6 @@ class ImageCaptionDataConfig(BaseDataConfig):
         self.char2vec_model = os.path.join(self.embedding_dir, char2vec_file_name)
         word2vec_file_name = "word2vec_" + str(self.embedding_dim_size) + ".model"
         self.word2vec_model = os.path.join(self.embedding_dir, word2vec_file_name)
-
         self.vocab_file = os.path.join(self.embedding_dir, "vocab.txt")
 
         # for encoder-decoder model
@@ -93,3 +107,23 @@ class ImageCaptionDataConfig(BaseDataConfig):
         self.num_preprocess_threads = 4
 
     pass
+
+
+class ImageCaptionFullDataConfig(ImageCaptionDataConfig):
+
+    def __init__(self,mode=MODE, model_name=MODEL_NAME):
+        super(ImageCaptionFullDataConfig,self).__init__(
+            mode=mode, model_name=model_name
+        )
+        self.tf_data_dir = os.path.join(self.model_data_dir,
+                                        'inception_resnet_v2')
+        self.train_data_dir = os.path.join(self.tf_data_dir,
+                                           "train")
+        self.valid_data_dir = os.path.join(self.tf_data_dir,
+                                                "valid")
+        self.test_data_dir = os.path.join(self.tf_data_dir,
+                                          "test")
+
+        self.visual_feature_size = 1536
+        self.model_name="image_caption_full"
+

@@ -26,7 +26,7 @@ class ImageCaptionDataLoader(BaseDataLoader):
     """
 
     def __init__(self, data_config=default_data_config):
-        super().__init__(data_config=data_config)
+        super(ImageCaptionDataLoader,self).__init__(data_config=data_config)
         # self.load_embeddings()
 
     def load_raw_generator(self, json_data_file, image_dir):

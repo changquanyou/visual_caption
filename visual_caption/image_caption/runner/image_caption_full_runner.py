@@ -11,7 +11,7 @@ import tensorflow as tf
 from tensorflow.contrib.learn import ModeKeys
 
 from visual_caption.base.base_runner import BaseRunner
-from visual_caption.image_caption.data.data_config import ImageCaptionDataConfig
+from visual_caption.image_caption.data.data_config import ImageCaptionFullDataConfig
 from visual_caption.image_caption.data.data_reader import ImageCaptionDataReader
 from visual_caption.image_caption.data.data_utils import ImageCaptionDataUtils
 from visual_caption.image_caption.feature.vgg_feature_manager import FeatureManager
@@ -20,11 +20,11 @@ from visual_caption.image_caption.model.image_caption_model import ImageCaptionM
 from visual_caption.utils.decorator_utils import timeit
 
 
-class ImageCaptionRunner(BaseRunner):
+class ImageCaptionFullRunner(BaseRunner):
     def __init__(self):
-        super(ImageCaptionRunner, self).__init__()
+        super(ImageCaptionFullRunner, self).__init__()
 
-        self.data_config = ImageCaptionDataConfig()
+        self.data_config = ImageCaptionFullDataConfig()
         self.data_reader = ImageCaptionDataReader(data_config=self.data_config)
         self.model_config = ImageCaptionConfig(data_config=self.data_config,
                                                model_name=self.data_config.model_name)
@@ -44,11 +44,11 @@ class ImageCaptionRunner(BaseRunner):
 
     @timeit
     def train(self):
-        model = ImageCaptionModel(model_config=self.model_config,
-                                  data_reader=self.data_reader,
-                                  mode=ModeKeys.TRAIN)
+        model = ImageCaptionFullModel(model_config=self.model_config,
+                                      data_reader=self.data_reader,
+                                      mode=ModeKeys.TRAIN)
         fetches = [model.summary_merged, model.loss, model.accuracy, model.train_op,
-                   model.image_ids, model.input_seqs, model.target_seqs, model.decoder_predictions]
+                   model.image_ids, model.input_seqs, model.target_seqs, model.predictions]
 
         format_string = "{0}: epoch={1:2d}, batch={2:6d}, step={3:6d}," \
                         " loss={4:.6f}, acc={5:.6f}, elapsed={6:.6f}"
@@ -60,10 +60,13 @@ class ImageCaptionRunner(BaseRunner):
                                    tf.global_variables_initializer())
                 sess.run(init_op)
             sess.run(tf.tables_initializer())
+
             train_init_op = self.data_reader.get_train_init_op()
             begin = time.time()
             # running the first internal evaluation
-            max_acc = self._internal_eval(model=model, sess=sess)
+            global_step = tf.train.global_step(sess, model.global_step_tensor)
+            if global_step >0:
+                max_acc = self._internal_eval(model=model, sess=sess)
             for epoch in range(model.model_config.max_max_epoch):
                 sess.run(train_init_op)  # initial train data options
                 step_begin = time.time()
@@ -158,11 +161,11 @@ class ImageCaptionRunner(BaseRunner):
                     print("valid: step={0:8d}, batch={1} loss={2:.4f}, acc={3:.4f}, elapsed={4:.4f}"
                           .format(global_step, batch_count, loss, acc, time.time() - step_begin))
                     step_begin = time.time()
-                if batch_count >= 100:
-                    break
+                    if batch_count >= 200:
+                        break
             except tf.errors.OutOfRangeError:  # ==> "End of validation dataset"
-                print("_internal_eval finished : step={0}, batch={1}, elapsed={2:.4f}"
-                      .format(global_step, batch_count, time.time() - step_begin))
+                print("_internal_eval finished : step={0}, batch={1}, eval_acc={}, elapsed={2:.4f}"
+                      .format(global_step, batch_count, eval_acc / batch_count, time.time() - step_begin))
                 break
 
         if batch_count > 0:
@@ -233,11 +236,11 @@ class ImageCaptionRunner(BaseRunner):
 
     def test(self):
         image_gen = self.get_test_images()
-        infer_model = ImageCaptionFullModel(model_config=self.model_config,
+        infer_model = ImageCaptionModel(model_config=self.model_config,
                                         data_reader=self.data_reader,
                                         mode=ModeKeys.INFER)
         model = infer_model
-        fetches = [model.predictions]
+        fetches = [model.decoder_predictions]
         with tf.Session(config=model.model_config.sess_config) as sess:
             if not model.restore_model(sess=sess):
                 init_op = tf.group(tf.local_variables_initializer(),
@@ -284,10 +287,10 @@ class ImageCaptionRunner(BaseRunner):
 
 
 def main(_):
-    runner = ImageCaptionRunner()
-    # runner.train()
+    runner = ImageCaptionFullRunner()
+    runner.train()
     # runner.eval()
-    runner.test()
+    # runner.test()
 
 
 if __name__ == '__main__':

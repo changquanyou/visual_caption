@@ -28,8 +28,8 @@ from tensorflow.python.ops import lookup_ops
 from ..utils import misc_utils as utils
 
 UNK = "<unk>"
-SOS = "<s>"
-EOS = "</s>"
+SOS = "<S>"
+EOS = "</S>"
 UNK_ID = 0
 
 

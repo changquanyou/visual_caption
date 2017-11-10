@@ -41,16 +41,19 @@ class BaseDataReader(object):
         return next_batch
 
     def get_train_init_op(self):
+        print("train_data_dir={}".format(self._data_config.train_data_dir))
         _train_dataset = self._get_dataset(data_dir=self._data_config.train_data_dir)
         initializer = self.data_iterator.make_initializer(_train_dataset)
         return initializer
 
     def get_valid_init_op(self):
+        print("valid_data_dir={}".format(self._data_config.valid_data_dir))
         _valid_dataset = self._get_dataset(data_dir=self._data_config.valid_data_dir)
         initializer = self.data_iterator.make_initializer(_valid_dataset)
         return initializer
 
     def get_test_init_op(self):
+        print("test_data_dir={}".format(self._data_config.test_data_dir))
         _test_dataset = self._get_dataset(data_dir=self._data_config.test_data_dir)
         initializer = self.data_iterator.make_initializer(_test_dataset)
         return initializer

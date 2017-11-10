@@ -14,7 +14,8 @@ from visual_caption.base.data.base_data_builder import BaseDataBuilder
 from visual_caption.image_caption.data.data_config import ImageCaptionDataConfig
 from visual_caption.image_caption.data.data_loader import ImageCaptionDataLoader
 from visual_caption.image_caption.data.data_utils import ImageCaptionDataUtils
-from visual_caption.image_caption.feature.feature_manager import FeatureManager
+from visual_caption.image_caption.feature.feature_extractor import FeatureExtractor
+from visual_caption.image_caption.feature.vgg_feature_manager import FeatureManager
 
 
 class ImageDecoder(object):
@@ -50,7 +51,9 @@ class ImageCaptionDataBuilder(BaseDataBuilder):
         self.data_loader = ImageCaptionDataLoader()
         self.data_utils = ImageCaptionDataUtils()
         self.image_decoder = ImageDecoder()
-        self.feature_manager = FeatureManager()
+        # self.feature_manager = FeatureManager()
+        self.feature_extractor = FeatureExtractor()
+
 
     def _build_tfrecords(self, image_dir, data_gen, output_file):
         """
@@ -73,8 +76,8 @@ class ImageCaptionDataBuilder(BaseDataBuilder):
                 print("flush batch {} dataset into file {}".format(batch, file))
                 sys.stdout.flush()
 
-            if batch > 100:
-                break
+            # if batch > 100:
+            #     break
 
         tf_writer.close()
         sys.stdout.flush()
@@ -91,9 +94,12 @@ class ImageCaptionDataBuilder(BaseDataBuilder):
         for caption_data in batch_caption_data:
             image_id = caption_data['image_id']
             image_filename = os.path.join(image_dir, image_id)
-            image_raw_data = self.data_utils.load_image_raw(image_filename)
-            image_batch.append(image_raw_data)
-        visual_features = self.feature_manager.get_vgg_feature(image_batch=image_batch)
+            # image_raw_data = self.data_utils.load_image_raw(image_filename)
+            # image_batch.append(image_raw_data)
+            image_batch.append(image_filename)
+
+        # visual_features = self.feature_manager.get_vgg_feature(image_batch=image_batch)
+        visual_features = self.feature_extractor.get_features(image_batch)
 
         # get list of sequence examples for batch caption_data
         for idx, caption_data in enumerate(batch_caption_data):  # for each caption meta data
