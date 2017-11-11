@@ -80,6 +80,8 @@ class FeatureExtractor(object):
         saver.restore(self.sess, checkpoint_file)
         self.fetches = [end_points['PreLogitsFlatten'], logits]
 
+
+
     def get_features(self, images):
         raw_images = load_images(images)
         feed_dict = {self.input_images: raw_images}

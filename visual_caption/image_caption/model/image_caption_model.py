@@ -24,8 +24,6 @@ class ImageCaptionModel(BaseModel):
             mode=mode
         )
 
-
-
     @timeit
     @define_scope(scope_name='inputs')
     def _build_inputs(self):
@@ -38,8 +36,8 @@ class ImageCaptionModel(BaseModel):
             # In inference mode, images and inputs are fed via placeholders.
             # image_feed = tf.placeholder(dtype=tf.string, shape=[], name="image_feed")
             self.input_feed = tf.placeholder(dtype=tf.int64,
-                                        shape=[None],  # batch_size
-                                        name="input_feed")
+                                             shape=[None],  # batch_size
+                                             name="input_feed")
             input_seqs = tf.expand_dims(self.input_feed, 1)
             # A float32 Tensor with shape [batch_size, image_feature_size].
             self.image_feature = tf.placeholder(tf.float32, [None, 4096], name='image_feature')
@@ -247,25 +245,27 @@ class ImageCaptionFullModel(ImageCaptionModel):
     def _build_inputs(self):
         data_type = self.model_config.data_type
         visual_feature_size = 1536
+        # A float32 Tensor with shape [1]
+        self.keep_prob = tf.placeholder(tf.float32, name='keep_prob')
+
+        # An int32 0/1 Tensor with shape [batch_size, padded_length].
+        self.input_mask = tf.placeholder(tf.int32, [None, None], name='input_mask')
+
         if self.mode == ModeKeys.INFER:
-            self.input_images = tf.placeholder(shape=[None, visual_feature_size],
-                                               dtype=data_type,
-                                               name="input_images")
+
             # In inference mode, images and inputs are fed via placeholders.
-            # image_feed = tf.placeholder(dtype=tf.string, shape=[], name="image_feed")
-            self.input_feed = tf.placeholder(dtype=tf.int64,
-                                        shape=[None],  # batch_size
-                                        name="input_feed")
+            self.image_feature = tf.placeholder(tf.float32, [None, visual_feature_size], name='image_feature')
+            self.input_feed = tf.placeholder(tf.int64, [None], name="input_feed")
             input_seqs = tf.expand_dims(self.input_feed, 1)
             # A float32 Tensor with shape [batch_size, image_feature_size].
-            self.image_feature = tf.placeholder(tf.float32, [None, visual_feature_size], name='image_feature')
+
             self.input_seqs = input_seqs
         else:
             (image_ids, image_features, captions, targets,
              caption_ids, target_ids, caption_lengths, target_lengths) = self.next_batch
 
             self.image_ids = image_ids
-            self.input_images = image_features
+            self.image_feature = image_features
 
             self.input_seqs = caption_ids
             self.input_lengths = caption_lengths
@@ -273,7 +273,7 @@ class ImageCaptionFullModel(ImageCaptionModel):
             self.target_seqs = target_ids
             self.target_lengths = target_lengths
 
-        self.batch_size = tf.shape(self.input_images)[0]
+        self.batch_size = tf.shape(self.image_feature)[0]
 
     @timeit
     @define_scope("embeddings")
@@ -287,13 +287,13 @@ class ImageCaptionFullModel(ImageCaptionModel):
                                              trainable=self.model_config.train_embeddings,
                                              name='embedding_map')
         input_seq_embeddings = tf.nn.embedding_lookup(self.embedding_map,
-                                                          self.input_seqs)
+                                                      self.input_seqs)
         self.input_seq_embeddings = input_seq_embeddings
 
         # Map inception output into embedding space.
         with tf.variable_scope("image_embedding") as scope:
             image_embeddings = tf.contrib.layers.fully_connected(
-                inputs=self.input_images,
+                inputs=self.image_feature,
                 num_outputs=self.embedding_size,
                 activation_fn=None,
                 weights_initializer=self.initializer,
@@ -338,7 +338,9 @@ class ImageCaptionFullModel(ImageCaptionModel):
         if self.mode == ModeKeys.INFER:
             # In inference mode, use concatenated states for convenient feeding and
             # fetching.
-            self.initial_state = tf.concat(values=initial_state, axis=1, name="initial_state")
+            self.initial_state = tf.concat(values=initial_state,
+                                           axis=1,
+                                           name="initial_state")
             # Placeholder for feeding a batch of concatenated states.
             self.state_feed = tf.placeholder(dtype=tf.float32,
                                              shape=[None, sum(rnn_cell.state_size)],

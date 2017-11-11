@@ -13,8 +13,8 @@ from tensorflow.contrib.learn import ModeKeys
 from visual_caption.base.base_runner import BaseRunner
 from visual_caption.image_caption.data.data_config import ImageCaptionFullDataConfig
 from visual_caption.image_caption.data.data_reader import ImageCaptionDataReader
-from visual_caption.image_caption.data.data_utils import ImageCaptionDataUtils
-from visual_caption.image_caption.feature.vgg_feature_manager import FeatureManager
+from visual_caption.image_caption.feature.feature_extractor import FeatureExtractor
+from visual_caption.image_caption.inference.caption_generator import CaptionGenerator
 from visual_caption.image_caption.model.image_caption_config import ImageCaptionConfig
 from visual_caption.image_caption.model.image_caption_model import ImageCaptionModel, ImageCaptionFullModel
 from visual_caption.utils.decorator_utils import timeit
@@ -38,7 +38,7 @@ class ImageCaptionFullRunner(BaseRunner):
         self.token_begin_id = self.token2index[self.token_begin]
         self.token_end_id = self.token2index[self.token_end]
 
-        self.feature_manager = FeatureManager()
+        self.feature_extractor = FeatureExtractor()
 
         pass
 
@@ -50,8 +50,8 @@ class ImageCaptionFullRunner(BaseRunner):
         fetches = [model.summary_merged, model.loss, model.accuracy, model.train_op,
                    model.image_ids, model.input_seqs, model.target_seqs, model.predictions]
 
-        format_string = "{0}: epoch={1:2d}, batch={2:6d}, step={3:6d}," \
-                        " loss={4:.6f}, acc={5:.6f}, elapsed={6:.6f}"
+        format_string = "{0}: epoch={1:2d}, batch={2:6d}, batch_size={3:2d}, " \
+                        "step={4:6d}, loss={5:.6f}, acc={6:.6f}, elapsed={7:.6f}"
         with tf.Session(config=self.model_config.sess_config) as sess:
             model.summary_writer.add_graph(sess.graph)
             if not model.restore_model(sess=sess):
@@ -60,12 +60,12 @@ class ImageCaptionFullRunner(BaseRunner):
                                    tf.global_variables_initializer())
                 sess.run(init_op)
             sess.run(tf.tables_initializer())
-
             train_init_op = self.data_reader.get_train_init_op()
             begin = time.time()
             # running the first internal evaluation
             global_step = tf.train.global_step(sess, model.global_step_tensor)
-            if global_step >0:
+            max_acc = 0.0
+            if global_step > 0:
                 max_acc = self._internal_eval(model=model, sess=sess)
             for epoch in range(model.model_config.max_max_epoch):
                 sess.run(train_init_op)  # initial train data options
@@ -77,16 +77,36 @@ class ImageCaptionFullRunner(BaseRunner):
                         global_step = tf.train.global_step(sess, model.global_step_tensor)
                         batch_summary, loss, acc, _, image_ids, input_seqs, \
                         target_seqs, predicts = result_batch
-                        model.summary_writer.add_summary(
-                            summary=batch_summary, global_step=global_step)
+                        batch_size = len(predicts)
+
                         batch += 1
                         # display and summarize training result
                         if batch % model.model_config.display_and_summary_step == 0:
                             # self._display_content(image_ids, input_seqs, predicts, target_seqs)
                             # add train summaries
-                            print(format_string.format(model.mode, epoch, batch, global_step, loss, acc,
-                                                       time.time() - step_begin))
+                            model.summary_writer.add_summary(
+                                summary=batch_summary, global_step=global_step)
+                            print(format_string.format(model.mode, epoch, batch, batch_size,
+                                                       global_step, loss, acc, time.time() - step_begin))
                             step_begin = time.time()
+
+                        if batch % 2000 == 0:
+                            try:
+                                valid_result = self._internal_eval(model=model, sess=sess)
+                            except tf.errors.OutOfRangeError:
+                                global_step = tf.train.global_step(sess,
+                                                                   model.global_step_tensor)
+                                model.logger.info("finished validation in training step {}"
+                                                  .format(global_step))
+                            valid_acc = valid_result
+                            if valid_acc > max_acc:  # save the best model session
+                                max_acc = valid_acc
+                                model.save_model(sess=sess, global_step=global_step)
+                                print('training: epoch={}, step={}, validation: average_result ={}'
+                                      .format(epoch, global_step, valid_result))
+                            print("training epoch={} finished with {} batches, global_step={}, elapsed={:.4f} "
+                                  .format(epoch, batch, global_step, time.time() - begin))
+
                     except tf.errors.OutOfRangeError:  # ==> "End of training dataset"
                         try:
                             valid_result = self._internal_eval(model=model, sess=sess)
@@ -141,7 +161,9 @@ class ImageCaptionFullRunner(BaseRunner):
         :param sess:
         :return:
         """
-        fetches = [model.accuracy, model.loss, model.summary_merged]
+        format_string = "{0}: step={1:8d}, batch={2:4d}, batch_size={3:4d}, " \
+                        "loss={4:.4f}, acc={5:.4f}, elapsed={6:.4f}"
+        fetches = [model.accuracy, model.loss, model.summary_merged, model.predictions]
         batch_count = 0
         eval_acc = 0.0
         validation_init_op = self.data_reader.get_valid_init_op()
@@ -152,16 +174,16 @@ class ImageCaptionFullRunner(BaseRunner):
         while True:  # iterate eval batch at step
             try:
                 eval_step_result = sess.run(fetches=fetches)
-                acc, loss, summaries = eval_step_result
+                acc, loss, summaries,predicts = eval_step_result
                 eval_acc += acc
                 batch_count += 1
                 if batch_count % self.model_config.display_and_summary_step == 0:
                     model.summary_validation_writer.add_summary(
                         summary=summaries, global_step=global_step)
-                    print("valid: step={0:8d}, batch={1} loss={2:.4f}, acc={3:.4f}, elapsed={4:.4f}"
-                          .format(global_step, batch_count, loss, acc, time.time() - step_begin))
+                    print(format_string.format("_internal_eval", global_step, batch_count, len(predicts),
+                                               loss, acc, time.time() - step_begin))
                     step_begin = time.time()
-                    if batch_count >= 200:
+                    if batch_count >= 100:
                         break
             except tf.errors.OutOfRangeError:  # ==> "End of validation dataset"
                 print("_internal_eval finished : step={0}, batch={1}, eval_acc={}, elapsed={2:.4f}"
@@ -177,6 +199,24 @@ class ImageCaptionFullRunner(BaseRunner):
     @timeit
     def valid(self):
         pass
+
+    def _internal_infer(self, model, sess):
+        fetches = [model.predictions]
+        image_gen = self.get_test_images()
+        infer_init_op = model.data_reader.get_valid_init_op()
+        sess.run(infer_init_op)  # initial infer data options
+        for batch, image_features in enumerate(image_gen):
+            feed_dict = {
+                model.image_feature: image_features,
+            }
+            [result_batch] = sess.run(fetches=fetches, feed_dict=feed_dict)
+            predicts = result_batch
+            for idx, predict in enumerate(predicts):
+                predict = predict.tolist()
+                predict_byte_list = [self.index2token[token_id]
+                                     for idx, token_id in enumerate(predict)]
+                predict_text = ' '.join(predict_byte_list)
+                print("image_id=, predict=[{}]".format(predict_text))
 
     @timeit
     def eval(self):
@@ -234,53 +274,51 @@ class ImageCaptionFullRunner(BaseRunner):
 
         pass
 
-    def test(self):
-        image_gen = self.get_test_images()
-        infer_model = ImageCaptionModel(model_config=self.model_config,
-                                        data_reader=self.data_reader,
-                                        mode=ModeKeys.INFER)
-        model = infer_model
-        fetches = [model.decoder_predictions]
+    def infer(self):
+        feature_gen = self.get_test_images()
+        model = ImageCaptionFullModel(model_config=self.model_config,
+                                      data_reader=self.data_reader,
+                                      mode=ModeKeys.INFER)
+        # Initialize beam search Caption Generator
+        generator = CaptionGenerator(model=model,
+                                     vocab=self.token2index,
+                                     beam_size=10,
+                                     max_caption_length=32)
         with tf.Session(config=model.model_config.sess_config) as sess:
+            model.summary_writer.add_graph(sess.graph)
+            # CheckPoint State
             if not model.restore_model(sess=sess):
                 init_op = tf.group(tf.local_variables_initializer(),
                                    tf.global_variables_initializer())
                 sess.run(init_op)
-            sess.run(tf.tables_initializer())
-            begin = time.time()
-            infer_init_op = model.data_reader.get_valid_init_op()
-            sess.run(infer_init_op)  # initial infer data options
-            for batch, image_features in enumerate(image_gen):
-                feed_dict = {
-                    model.input_image_embeddings: image_features,
-                }
-                [result_batch] = sess.run(fetches=fetches, feed_dict=feed_dict)
-                predicts = result_batch
-                for idx, predict in enumerate(predicts):
-                    predict = predict.tolist()
-                    predict_byte_list = [self.index2token[token_id]
-                                         for idx, token_id in enumerate(predict)]
-                    predict_text = ' '.join(predict_byte_list)
-                    print("image_id=, predict=[{}]".format(predict_text))
 
-        pass
+            sess.run(tf.tables_initializer())
+            for idx, image_features in enumerate(feature_gen):
+                batch_size = image_features.shape[0]
+                for i in range(batch_size):
+                    image_feature = image_features[i].reshape(1, -1)
+                    predict_captions = generator.beam_search(sess, image_feature)
+                    for idx, caption in enumerate(predict_captions):
+                        caption_text = [self.index2token[idx] for idx in caption.sentence]
+                        print("beam_idx:{:1d}, logprob:{:.4f}, caption:{}"
+                              .format(idx, caption.logprob, ''.join(caption_text)))
 
     def get_test_images(self):
+
         image_filenames = os.listdir(self.data_config.test_image_dir)
         batch_size = 20
         image_batch = list()
         for filename in image_filenames:
             image_file = os.path.join(self.data_config.test_image_dir, filename)
-            image_raw = ImageCaptionDataUtils.load_image_raw(image_file=image_file)
-            image_batch.append(image_raw)
-
+            # image_raw = ImageCaptionDataUtils.load_image_raw(image_file=image_file)
+            image_batch.append(image_file)
             if len(image_batch) == batch_size:
-                features = self.feature_manager.get_batch_features(image_batch)
+                features = self.feature_extractor.get_features(image_batch)
                 yield features
                 image_batch = []
 
         if len(image_batch) > 0:
-            features = self.feature_manager.get_batch_features(image_batch)
+            features = self.feature_extractor.get_features(image_batch)
             yield features
         del image_batch
         pass
@@ -290,7 +328,7 @@ def main(_):
     runner = ImageCaptionFullRunner()
     runner.train()
     # runner.eval()
-    # runner.test()
+    runner.infer()
 
 
 if __name__ == '__main__':
