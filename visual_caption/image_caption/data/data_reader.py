@@ -125,16 +125,6 @@ class ImageCaptionDataReader(BaseDataReader):
         return data
 
 
-class ImageCaptionFullDataReader():
-    def get_data_iterator(self):
-        pass
-
-    def get_next_batch(self):
-        pass
-
-
-
-
 
 def main(_):
     """

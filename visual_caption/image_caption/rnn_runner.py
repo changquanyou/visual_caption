@@ -51,8 +51,8 @@ class RNNCaptionRunner(BaseRunner):
         fetches = [model.summary_merged, model.loss, model.accuracy, model.train_op,
                    model.image_ids, model.input_seqs, model.target_seqs, model.predictions]
 
-        format_string = "{0}: epoch={1:2d}, batch={2:6d}, step={3:6d}," \
-                        " loss={4:.6f}, acc={5:.6f}, elapsed={6:.6f}"
+        format_string = "{0}: epoch={1:2d}, batch={2:6d}, batch_size={3:2d}, " \
+                        "step={4:6d}, loss={5:.6f}, acc={6:.6f}, elapsed={7:.6f}"
         with tf.Session(config=self.model_config.sess_config) as sess:
             model.summary_writer.add_graph(sess.graph)
             if not model.restore_model(sess=sess):
@@ -79,13 +79,13 @@ class RNNCaptionRunner(BaseRunner):
                         if batch % model.model_config.display_and_summary_step == 0:
                             batch_summary, loss, acc, _, image_ids, \
                             input_seqs, target_seqs, predicts = result_batch
-
-                            self._display_content(image_ids, input_seqs, predicts, target_seqs)
+                            batch_size = len(predicts)
+                            # self._display_content(image_ids, input_seqs, predicts, target_seqs)
                             # add train summaries
                             model.summary_writer.add_summary(
                                 summary=batch_summary, global_step=global_step)
-                            print(format_string.format(model.mode, epoch, batch, global_step, loss, acc,
-                                                       time.time() - step_begin))
+                            print(format_string.format(model.mode, epoch, batch, batch_size,
+                                                       global_step, loss, acc, time.time() - step_begin))
                             step_begin = time.time()
                     except tf.errors.OutOfRangeError:  # ==> "End of training dataset"
                         try:
@@ -286,7 +286,7 @@ class RNNCaptionRunner(BaseRunner):
 
 def main(_):
     runner = RNNCaptionRunner()
-    # runner.train()
+    runner.train()
     # runner.eval()
     runner.infer()
 

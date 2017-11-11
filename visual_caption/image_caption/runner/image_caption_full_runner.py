@@ -174,7 +174,7 @@ class ImageCaptionFullRunner(BaseRunner):
         while True:  # iterate eval batch at step
             try:
                 eval_step_result = sess.run(fetches=fetches)
-                acc, loss, summaries,predicts = eval_step_result
+                acc, loss, summaries, predicts = eval_step_result
                 eval_acc += acc
                 batch_count += 1
                 if batch_count % self.model_config.display_and_summary_step == 0:
@@ -304,7 +304,6 @@ class ImageCaptionFullRunner(BaseRunner):
                               .format(idx, caption.logprob, ''.join(caption_text)))
 
     def get_test_images(self):
-
         image_filenames = os.listdir(self.data_config.test_image_dir)
         batch_size = 20
         image_batch = list()
@@ -316,7 +315,6 @@ class ImageCaptionFullRunner(BaseRunner):
                 features = self.feature_extractor.get_features(image_batch)
                 yield features
                 image_batch = []
-
         if len(image_batch) > 0:
             features = self.feature_extractor.get_features(image_batch)
             yield features
@@ -326,7 +324,7 @@ class ImageCaptionFullRunner(BaseRunner):
 
 def main(_):
     runner = ImageCaptionFullRunner()
-    runner.train()
+    # runner.train()
     # runner.eval()
     runner.infer()
 

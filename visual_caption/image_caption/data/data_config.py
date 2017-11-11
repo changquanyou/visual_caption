@@ -22,7 +22,13 @@ class ImageCaptionDataConfig(BaseDataConfig):
     def __init__(self, mode=MODE, model_name=MODEL_NAME):
         super(ImageCaptionDataConfig, self).__init__(
             mode=mode, model_name=model_name)
-        self.tf_data_dir = os.path.join(self.model_data_dir, '')
+
+        # self.visual_feature_size = 4096
+        self.visual_feature_size = 1536
+        self.tf_data_dir = os.path.join(self.model_data_dir,
+                                        'inception_resnet_v2')
+
+
 
         # for train
         self.train_rawdata_dir = os.path.join(self.model_data_dir,
@@ -105,6 +111,8 @@ class ImageCaptionDataConfig(BaseDataConfig):
         self.num_input_reader_threads = 1
         # Number of threads for image preprocessing. Should be a multiple of 2.
         self.num_preprocess_threads = 4
+
+
 
     pass
 
