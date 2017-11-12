@@ -38,7 +38,7 @@ class ImageCaptionFullRunner(BaseRunner):
         self.token_begin_id = self.token2index[self.token_begin]
         self.token_end_id = self.token2index[self.token_end]
 
-        self.feature_extractor = FeatureExtractor()
+        # self.feature_extractor = FeatureExtractor()
 
         pass
 
@@ -275,7 +275,7 @@ class ImageCaptionFullRunner(BaseRunner):
         pass
 
     def infer(self):
-        feature_gen = self.get_test_images()
+        # feature_gen = self.get_test_images()
         model = ImageCaptionFullModel(model_config=self.model_config,
                                       data_reader=self.data_reader,
                                       mode=ModeKeys.INFER)
@@ -284,24 +284,30 @@ class ImageCaptionFullRunner(BaseRunner):
                                      vocab=self.token2index,
                                      beam_size=10,
                                      max_caption_length=32)
+
+        # use train data as infer data
+        data_init_op = self.data_reader.get_train_init_op()
+
         with tf.Session(config=model.model_config.sess_config) as sess:
-            model.summary_writer.add_graph(sess.graph)
             # CheckPoint State
             if not model.restore_model(sess=sess):
                 init_op = tf.group(tf.local_variables_initializer(),
                                    tf.global_variables_initializer())
                 sess.run(init_op)
-
             sess.run(tf.tables_initializer())
-            for idx, image_features in enumerate(feature_gen):
-                batch_size = image_features.shape[0]
-                for i in range(batch_size):
-                    image_feature = image_features[i].reshape(1, -1)
-                    predict_captions = generator.beam_search(sess, image_feature)
-                    for idx, caption in enumerate(predict_captions):
-                        caption_text = [self.index2token[idx] for idx in caption.sentence]
-                        print("beam_idx:{:1d}, logprob:{:.4f}, caption:{}"
-                              .format(idx, caption.logprob, ''.join(caption_text)))
+            sess.run(data_init_op)
+
+            infer_batch_data = sess.run(model.next_batch)
+            (image_ids, image_features, captions, targets,
+             caption_ids, target_ids, caption_lengths, target_lengths) = infer_batch_data
+            for idx, image_id in enumerate(image_ids):
+                image_feature = image_features[idx].reshape(1, -1)
+                print("image_id={}".format(image_id))
+                predict_captions = generator.beam_search(sess, image_feature)
+                for index, caption in enumerate(predict_captions):
+                    caption_text = [self.index2token[idx] for idx in caption.sentence]
+                    print("beam_idx:{:1d}, logprob:{:.4f}, caption:{}"
+                          .format(index, caption.logprob, ''.join(caption_text)))
 
     def get_test_images(self):
         image_filenames = os.listdir(self.data_config.test_image_dir)

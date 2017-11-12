@@ -31,7 +31,7 @@ class BaseModel(object):
 
         self.summary_writer = tf.summary.FileWriter(
             logdir=self.model_config.log_train_dir)
-        self.summary_validation_writer = tf.summary.FileWriter(
+        self.summary_eval_writer = tf.summary.FileWriter(
             logdir=self.model_config.log_validation_dir)
         self.summary_test_writer = tf.summary.FileWriter(
             logdir=self.model_config.log_test_dir)
@@ -46,8 +46,6 @@ class BaseModel(object):
 
         # build model
         self._build_model()
-
-
 
     @timeit
     def _build_model(self):
@@ -66,7 +64,6 @@ class BaseModel(object):
         self._build_train_op()
         self._build_summaries()
         # create a model saver to save or restore model
-
 
     @timeit
     def _get_logger(self):
@@ -114,17 +111,17 @@ class BaseModel(object):
         # Arrange for the embedding vars to appear at the beginning.
         self.learning_rate = tf.constant(config.learning_rate)
         if self.mode == tf.contrib.learn.ModeKeys.TRAIN:
-            self.learning_rate = tf.cond(
-                self.global_step_tensor < config.start_decay_step,
-                lambda: self.learning_rate,
-                lambda: tf.train.exponential_decay(
-                    learning_rate=self.learning_rate,
-                    global_step=(self.global_step_tensor - config.start_decay_step),
-                    decay_steps=config.decay_steps,
-                    decay_rate=config.decay_rate,
-                    staircase=True))
-            tf.summary.scalar('learning_rate', self.learning_rate)
-        self.optimizer = tf.train.GradientDescentOptimizer(learning_rate=self.learning_rate)
+        #     self.learning_rate = tf.cond(
+        #         self.global_step_tensor < config.start_decay_step,
+        #         lambda: self.learning_rate,
+        #         lambda: tf.train.exponential_decay(
+        #             learning_rate=self.learning_rate,
+        #             global_step=(self.global_step_tensor - config.start_decay_step),
+        #             decay_steps=config.decay_steps,
+        #             decay_rate=config.decay_rate,
+        #             staircase=True))
+        #     tf.summary.scalar('learning_rate', self.learning_rate)
+            self.optimizer = tf.train.MomentumOptimizer(learning_rate=self.learning_rate, momentum=0.9)
 
     @timeit
     @define_scope(scope_name='gradients')
@@ -146,11 +143,14 @@ class BaseModel(object):
          Set up the training ops.
          """
         if not self.mode == ModeKeys.INFER:
-            trainables = tf.trainable_variables()
-            grads_and_vars = zip(self._gradients, trainables)
-            self.train_op = self.optimizer.apply_gradients(grads_and_vars=grads_and_vars,
-                                                           global_step=self.global_step_tensor,
-                                                           name='train_step')
+        #     trainables = tf.trainable_variables()
+        #     grads_and_vars = zip(self._gradients, trainables)
+        #     self.train_op = self.optimizer.apply_gradients(grads_and_vars=grads_and_vars,
+        #                                                    global_step=self.global_step_tensor,
+        #                                                    name='train_step')
+            self.train_op = self.optimizer.minimize(self.loss,
+                                                global_step=self.global_step_tensor,
+                                                name='train_step')
 
     @timeit
     @define_scope(scope_name='summaries')
@@ -166,8 +166,8 @@ class BaseModel(object):
             os.makedirs(checkpoint_dir)
         model_server = tf.train.Saver()
         model_server.save(sess=sess,
-                               save_path=os.path.join(checkpoint_dir, model_name),
-                               global_step=global_step)
+                          save_path=os.path.join(checkpoint_dir, model_name),
+                          global_step=global_step)
         self.logger.info("save model {} at step {}".format(model_name, global_step))
 
     @timeit
@@ -189,4 +189,5 @@ class BaseModel(object):
             print("model  restored".format())
             return True
         else:
+            self.logger.info("No saved model found.")
             return False

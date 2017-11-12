@@ -4,9 +4,11 @@ from __future__ import division
 from __future__ import print_function
 from __future__ import unicode_literals  # compatible with python3 unicode coding
 
+import math
 import os
 import time
 
+import numpy as np
 import tensorflow as tf
 from tensorflow.contrib.learn import ModeKeys
 
@@ -14,7 +16,7 @@ from visual_caption.base.base_runner import BaseRunner
 from visual_caption.image_caption.data.data_config import ImageCaptionDataConfig
 from visual_caption.image_caption.data.data_reader import ImageCaptionDataReader
 from visual_caption.image_caption.data.data_utils import ImageCaptionDataUtils
-from visual_caption.image_caption.feature.vgg_feature_manager import FeatureManager
+from visual_caption.image_caption.feature.feature_extractor import FeatureExtractor
 from visual_caption.image_caption.inference.caption_generator import CaptionGenerator
 from visual_caption.image_caption.model.image_caption_config import ImageCaptionConfig
 from visual_caption.image_caption.model.image_rnn_model import ImageRNNModel
@@ -39,7 +41,7 @@ class RNNCaptionRunner(BaseRunner):
         self.token_begin_id = self.token2index[self.token_begin]
         self.token_end_id = self.token2index[self.token_end]
 
-        self.feature_manager = None
+        # self.feature_manager = None
 
         pass
 
@@ -60,12 +62,16 @@ class RNNCaptionRunner(BaseRunner):
                 init_op = tf.group(tf.local_variables_initializer(),
                                    tf.global_variables_initializer())
                 sess.run(init_op)
-            sess.run(tf.tables_initializer())
+                sess.run(tf.tables_initializer())
+            else:
+                # running first internal evaluation
+                sess.run(tf.tables_initializer())
+                max_acc = self._internal_eval(model=model, sess=sess)
+
             train_init_op = self.data_reader.get_train_init_op()
             begin = time.time()
 
-            # running first internal evaluation
-            max_acc = self._internal_eval(model=model, sess=sess)
+
             for epoch in range(model.model_config.max_max_epoch):
                 sess.run(train_init_op)  # initial train data options
                 step_begin = time.time()
@@ -141,7 +147,7 @@ class RNNCaptionRunner(BaseRunner):
         :param sess:
         :return:
         """
-        fetches = [model.accuracy, model.loss, model.summary_merged, model.predictions]
+        fetches = [model.accuracy, model.target_cross_entropy_losses, model.summary_merged, model.predictions]
         batch_count = 0
         eval_acc = 0.0
         validation_init_op = self.data_reader.get_valid_init_op()
@@ -149,18 +155,19 @@ class RNNCaptionRunner(BaseRunner):
         sess.run(validation_init_op)
         step_begin = time.time()
         global_step = tf.train.global_step(sess, model.global_step_tensor)
+        sum_losses = 0.
+        start_time = time.time()
         while True:  # iterate eval batch at step
             try:
                 eval_step_result = sess.run(fetches=fetches)
-                acc, loss, summaries, predictions = eval_step_result
-                model.summary_validation_writer.add_summary(
-                    summary=summaries, global_step=global_step)
+                acc, eval_loss, summaries, predictions = eval_step_result
+                sum_losses += np.sum(eval_loss)
                 eval_acc += acc
                 batch_count += 1
                 if batch_count % self.model_config.display_and_summary_step == 0:
                     print("valid: step={0:8d}, batch={1} loss={2:.4f}, acc={3:.4f}, elapsed={4:.4f}"
-                          .format(global_step, batch_count, loss, acc, time.time() - step_begin))
-                    step_begin = time.time()
+                          .format(global_step, batch_count, eval_loss, acc, time.time() - step_begin))
+                step_begin = time.time()
                 if batch_count >= 100:
                     break
             except tf.errors.OutOfRangeError:  # ==> "End of validation dataset"
@@ -169,7 +176,18 @@ class RNNCaptionRunner(BaseRunner):
                 break
 
         if batch_count > 0:
+            # Log perplexity to the FileWriter.
+            perplexity = math.exp(sum_losses)
+            eval_time = time.time() - start_time
+            tf.logging.info("Perplexity = %f (%.2g sec)", perplexity, eval_time)
+            summary = tf.Summary()
+            value = summary.value.add()
+            value.simple_value = perplexity
+            value.tag = "Perplexity"
+            model.summary_eval_writer.add_summary(summary, global_step)
+
             eval_acc = eval_acc / batch_count
+
         result = eval_acc
         return result
         pass
@@ -185,7 +203,7 @@ class RNNCaptionRunner(BaseRunner):
                               mode=ModeKeys.EVAL)
         fetches = [model.loss, model.accuracy,
                    model.image_ids, model.input_seqs, model.target_seqs,
-                   model.decoder_predictions]
+                   model.predictions]
         format_string = "{}: batch={:6d}, step={:6d}, loss={:.6f}, acc={:.6f}, elapsed={:.6f}"
         with tf.Session(config=model.model_config.sess_config) as sess:
             model.summary_writer.add_graph(sess.graph)
@@ -209,7 +227,7 @@ class RNNCaptionRunner(BaseRunner):
                     feed_dict = {
 
                         model.image_ids: image_ids,
-                        model.input_image_embeddings: image_features,
+                        model.image_feature: image_features,
 
                         model.input_seqs: caption_ids,
                         model.target_seqs: target_ids,
@@ -235,7 +253,7 @@ class RNNCaptionRunner(BaseRunner):
         pass
 
     def infer(self):
-        feature_gen = self.get_test_images()
+        # feature_gen = self.get_test_images()
         model = ImageRNNModel(model_config=self.model_config,
                               data_reader=self.data_reader,
                               mode=ModeKeys.INFER)
@@ -244,6 +262,9 @@ class RNNCaptionRunner(BaseRunner):
                                      vocab=self.token2index,
                                      beam_size=10,
                                      max_caption_length=32)
+
+        # use train data as infer data
+        data_init_op = self.data_reader.get_train_init_op()
         with tf.Session(config=model.model_config.sess_config) as sess:
             model.summary_writer.add_graph(sess.graph)
             # CheckPoint State
@@ -253,19 +274,21 @@ class RNNCaptionRunner(BaseRunner):
                 sess.run(init_op)
 
             sess.run(tf.tables_initializer())
-            for idx, image_features in enumerate(feature_gen):
-                batch_size = image_features.shape[0]
-                for i in range(batch_size):
-                    image_feature = image_features[i].reshape(1, -1)
-                    predict_captions = generator.beam_search(sess, image_feature)
-                    for idx, caption in enumerate(predict_captions):
-                        caption_text = [self.index2token[idx] for idx in caption.sentence]
-                        print("beam_idx:{:1d}, logprob:{:.4f}, caption:{}"
-                              .format(idx, caption.logprob, ''.join(caption_text)))
+            sess.run(data_init_op)
+
+            infer_batch_data = sess.run(model.next_batch)
+            (image_ids, image_features, captions, targets,
+             caption_ids, target_ids, caption_lengths, target_lengths) = infer_batch_data
+            for idx, image_id in enumerate(image_ids):
+                image_feature = image_features[idx].reshape(1, -1)
+                predict_captions = generator.beam_search(sess, image_feature)
+                for idx, caption in enumerate(predict_captions):
+                    caption_text = [self.index2token[idx] for idx in caption.sentence]
+                    print("beam_idx:{:1d}, logprob:{:.4f}, caption:{}"
+                          .format(idx, caption.logprob, ''.join(caption_text)))
 
     def get_test_images(self):
-        if not self.feature_manager:
-            self.feature_manager = FeatureManager()
+        feature_manager = FeatureExtractor(sess=None)
         image_filenames = os.listdir(self.data_config.train_image_dir)
         batch_size = 20
         image_batch = list()
@@ -274,11 +297,11 @@ class RNNCaptionRunner(BaseRunner):
             image_raw = ImageCaptionDataUtils.load_image_raw(image_file=image_file)
             image_batch.append(image_raw)
             if len(image_batch) == batch_size:
-                features = self.feature_manager.get_batch_features(image_batch)
+                features = feature_manager.get_features(image_batch)
                 yield features
                 image_batch = []
         if len(image_batch) > 0:
-            features = self.feature_manager.get_batch_features(image_batch)
+            features = feature_manager.get_features(image_batch)
             yield features
         del image_batch
         pass
