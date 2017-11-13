@@ -26,8 +26,6 @@ class ImageCaptionDataReader(BaseDataReader):
         super(ImageCaptionDataReader, self).__init__(
             data_config=data_config)
 
-
-
     def _build_context_and_feature(self):
         self.context_features = {
             self._data_config.visual_image_id_name:
@@ -147,6 +145,7 @@ def main(_):
         sess.run(init_op)
         sess.run(tf.tables_initializer())
         sess.run(train_init_op)
+        global_step = tf.train.global_step(sess, global_step_tensor)
         while True:
             try:
                 batch_data = sess.run(next_batch)

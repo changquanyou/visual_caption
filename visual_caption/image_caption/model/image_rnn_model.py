@@ -27,32 +27,28 @@ class ImageRNNModel(BaseModel):
     def _build_inputs(self):
         data_type = self.model_config.data_type
         visual_feature_size = self.model_config.data_config.visual_feature_size
-
-        # A float32 Tensor with shape [1]
-        self.keep_prob = tf.placeholder(tf.float32, name='keep_prob')
-
         # An int32 0/1 Tensor with shape [batch_size, padded_length].
         self.input_mask = tf.placeholder(tf.int32, [None, None], name='input_mask')
 
         if self.mode == ModeKeys.INFER:
             # In inference mode, images and inputs are fed via placeholders.
-            # image_feed = tf.placeholder(dtype=tf.string, shape=[], name="image_feed")
-            self.input_feed = tf.placeholder(dtype=tf.int64,
-                                             shape=[None],  # batch_size
-                                             name="input_feed")
-            input_seqs = tf.expand_dims(self.input_feed, 1)
+            self.input_feeds = tf.placeholder(dtype=tf.int64,
+                                              shape=[None],  # batch_size
+                                              name="input_feeds")
+            input_seqs = tf.expand_dims(self.input_feeds, 1)
             # A float32 Tensor with shape [batch_size, image_feature_size].
-            self.image_feature = tf.placeholder(dtype=tf.float32,
-                                                shape=[None, visual_feature_size],
-                                                name='image_feature')
+            self.image_features = tf.placeholder(dtype=tf.float32,
+                                                 shape=[None, visual_feature_size],
+                                                 name='image_features')
             self.input_seqs = input_seqs
+
 
         else:
 
             (image_ids, image_features, captions, targets,
              caption_ids, target_ids, caption_lengths, target_lengths) = self.next_batch
 
-            self.image_feature = image_features
+            self.image_features = image_features
             self.image_ids = image_ids
 
             self.input_seqs = caption_ids
@@ -62,8 +58,9 @@ class ImageRNNModel(BaseModel):
             self.target_lengths = target_lengths
 
         # replace default model config batch_size with data pipeline batch_size
-        self.batch_size = tf.shape(self.image_feature)[0]
+        self.batch_size = tf.shape(self.image_features)[0]
         # Maximum decoder time_steps in current batch
+        self.input_lengths = tf.reduce_sum(tf.sign(self.input_seqs), 1)
         self.max_seq_length = self.model_config.length_max_output
 
         pass
@@ -79,13 +76,15 @@ class ImageRNNModel(BaseModel):
                                              dtype=self.model_config.data_type,
                                              trainable=self.model_config.train_embeddings,
                                              name='embedding_map')
-        self.input_seq_embeddings = tf.nn.embedding_lookup(
-            params=self.embedding_map, ids=self.input_seqs)
+
+        self.input_seq_embeddings = tf.nn.embedding_lookup(params=self.embedding_map,
+                                                           ids=self.input_seqs,
+                                                           name="input_seq_embeddings")
 
         # Map inception output into embedding space.
         with tf.variable_scope("image_embedding") as scope:
             image_embeddings = tf.contrib.layers.fully_connected(
-                inputs=self.image_feature,
+                inputs=self.image_features,
                 num_outputs=embedding_size,
                 activation_fn=None,
                 weights_initializer=self.initializer,
@@ -120,6 +119,16 @@ class ImageRNNModel(BaseModel):
         start_embeddings = tf.concat(values=[token_begin_embeddings, self.image_embeddings], axis=-1)
         start_embeddings = tf.nn.l2_normalize(start_embeddings, dim=-1)
 
+        image_embedding_seqs = tf.expand_dims(input=self.image_embeddings, axis=1)
+        image_embedding_seqs = tf.tile(input=image_embedding_seqs,
+                                       multiples=[1, tf.shape(self.input_seq_embeddings)[1], 1])
+
+        input_embeddings = tf.concat(values=[self.input_seq_embeddings, image_embedding_seqs],
+                                     axis=-1)
+        input_embeddings = tf.nn.l2_normalize(input_embeddings, dim=-1)
+        # input_embeddings = self.input_seq_embeddings
+
+
         with tf.variable_scope("RNN", initializer=self.initializer, reuse=tf.AUTO_REUSE) as rnn_scope:
             # Feed the image embeddings to set the initial RNN state.
             # forward RNN cell
@@ -136,37 +145,28 @@ class ImageRNNModel(BaseModel):
         if self.mode == ModeKeys.INFER:
             # In inference mode, use concatenated states for convenient feeding and
             # fetching.
-            self.initial_state = tf.concat(tf.concat([initial_state_fw, initial_state_bw], axis=-1),
-                                           axis=1, name="initial_state")
-            # Placeholder for feeding a batch of concatenated states.
-            self.state_feed = tf.placeholder(shape=[None, cell_fw.state_size + cell_bw.state_size],
-                                             name="state_feed", dtype=tf.float32)
+            self.initial_states = tf.concat(tf.concat([initial_state_fw, initial_state_bw], axis=-1),
+                                            axis=1, name="initial_state")
 
-            state_tuple_fw, state_tuple_bw = tf.split(value=self.state_feed, num_or_size_splits=2, axis=1)
+            # Placeholder for feeding a batch of concatenated states.
+            self.state_feeds = tf.placeholder(shape=[None, cell_fw.state_size + cell_bw.state_size],
+                                              name="state_feed", dtype=tf.float32)
+
+            state_tuple_fw, state_tuple_bw = tf.split(value=self.state_feeds, num_or_size_splits=2, axis=1)
+
+            inputs_fw = tf.squeeze(input_embeddings, axis=[1], name="input_fw")
+            inputs_bw = tf.squeeze(input_embeddings, axis=[1], name="input_bw")
 
             # Run a single step.
-            inputs_fw = tf.squeeze(self.input_seq_embeddings, axis=[1], name="input_fw")
-            inputs_bw = tf.squeeze(self.input_seq_embeddings, axis=[1], name="input_bw")
-
             outputs_fw, state_tuple_new_fw = cell_fw(inputs=inputs_fw, state=state_tuple_fw)
             outputs_bw, state_tuple_new_bw = cell_bw(inputs=inputs_bw, state=state_tuple_bw)
 
             outputs = (outputs_fw, outputs_bw)
-
-            # Concatentate the resulting state.
-            tf.concat(axis=1, values=state_tuple_new_fw, name="state_fw")
-            tf.concat(axis=1, values=state_tuple_new_bw, name="state_bw")
+            final_states = (state_tuple_new_fw, state_tuple_new_bw)
 
         else:
             # Run the batch of sequence embeddings through the LSTM.
-            image_embedding_seqs = tf.expand_dims(input=self.image_embeddings, axis=1)
-            image_embedding_seqs = tf.tile(image_embedding_seqs,
-                                           multiples=[1, tf.reduce_max(self.input_lengths), 1])
-            input_embeddings = tf.concat(values=[self.input_seq_embeddings, image_embedding_seqs],
-                                         axis=-1)
-            input_embeddings = tf.nn.l2_normalize(input_embeddings, dim=-1)
-            # input_embeddings = self.input_seq_embeddings
-            outputs, self.final_state = tf.nn.bidirectional_dynamic_rnn(
+            outputs, final_states = tf.nn.bidirectional_dynamic_rnn(
                 cell_fw=cell_fw,
                 cell_bw=cell_bw,
                 inputs=input_embeddings,
@@ -178,6 +178,7 @@ class ImageRNNModel(BaseModel):
         # Stack batches vertically.
         # self.outputs = tf.reshape(outputs, [-1, rnn_cell.output_size])
         self.outputs = tf.concat(outputs, -1)
+        self.final_states = tf.concat(final_states, -1)
 
     @timeit
     def __create_rnn_cell(self, num_units):

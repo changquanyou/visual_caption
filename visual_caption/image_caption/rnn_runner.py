@@ -17,7 +17,6 @@ from visual_caption.image_caption.data.data_config import ImageCaptionDataConfig
 from visual_caption.image_caption.data.data_reader import ImageCaptionDataReader
 from visual_caption.image_caption.data.data_utils import ImageCaptionDataUtils
 from visual_caption.image_caption.feature.feature_extractor import FeatureExtractor
-from visual_caption.image_caption.inference.caption_generator import CaptionGenerator
 from visual_caption.image_caption.model.image_caption_config import ImageCaptionConfig
 from visual_caption.image_caption.model.image_rnn_model import ImageRNNModel
 from visual_caption.utils.decorator_utils import timeit
@@ -63,6 +62,7 @@ class RNNCaptionRunner(BaseRunner):
                                    tf.global_variables_initializer())
                 sess.run(init_op)
                 sess.run(tf.tables_initializer())
+                max_acc = 0.0
             else:
                 # running first internal evaluation
                 sess.run(tf.tables_initializer())
@@ -70,7 +70,6 @@ class RNNCaptionRunner(BaseRunner):
 
             train_init_op = self.data_reader.get_train_init_op()
             begin = time.time()
-
 
             for epoch in range(model.model_config.max_max_epoch):
                 sess.run(train_init_op)  # initial train data options
@@ -168,7 +167,7 @@ class RNNCaptionRunner(BaseRunner):
                     print("valid: step={0:8d}, batch={1} loss={2:.4f}, acc={3:.4f}, elapsed={4:.4f}"
                           .format(global_step, batch_count, eval_loss, acc, time.time() - step_begin))
                 step_begin = time.time()
-                if batch_count >= 100:
+                if batch_count >= 300:
                     break
             except tf.errors.OutOfRangeError:  # ==> "End of validation dataset"
                 print("validation finished : step={0}, batch={1}, elapsed={2:.4f}"
@@ -252,40 +251,59 @@ class RNNCaptionRunner(BaseRunner):
 
         pass
 
+    @timeit
+    def _internal_infer(self, model, sess, image_features):
+        # get initial state for  infer_model
+        batch_size = len(image_features)
+        feed_dict = {model.image_features: image_features}
+        initial_states = sess.run(fetches=model.initial_states, feed_dict=feed_dict)
+
+        # the first step inference
+        infer_fetches = [model.predictions, model.final_states]
+        begin_inputs = [self.token_begin_id for _ in range(batch_size)]
+
+        feed_dict = {model.image_features: image_features,
+                     model.input_feeds: begin_inputs,
+                     model.state_feeds: initial_states}
+        predict_ids, new_states = sess.run(fetches=infer_fetches, feed_dict=feed_dict)
+
+        caption_ids = [[id] for id in predict_ids]
+        for i in range(model.max_seq_length):  # for each inference step
+            # feed_dict for next step
+            feed_dict = {model.image_features: image_features,
+                         model.input_feeds: predict_ids,
+                         model.state_feeds: new_states}
+
+            predict_ids, new_states = sess.run(fetches=infer_fetches, feed_dict=feed_dict)
+            for idx, predict_id in enumerate(predict_ids):
+                caption_ids[idx].append(predict_id)
+        return caption_ids
+
     def infer(self):
         # feature_gen = self.get_test_images()
         model = ImageRNNModel(model_config=self.model_config,
                               data_reader=self.data_reader,
                               mode=ModeKeys.INFER)
-        # Initialize beam search Caption Generator
-        generator = CaptionGenerator(model=model,
-                                     vocab=self.token2index,
-                                     beam_size=10,
-                                     max_caption_length=32)
-
         # use train data as infer data
-        data_init_op = self.data_reader.get_train_init_op()
+        data_init_op = self.data_reader.get_valid_init_op()
         with tf.Session(config=model.model_config.sess_config) as sess:
-            model.summary_writer.add_graph(sess.graph)
-            # CheckPoint State
-            if not model.restore_model(sess=sess):
-                init_op = tf.group(tf.local_variables_initializer(),
-                                   tf.global_variables_initializer())
-                sess.run(init_op)
-
+            model.restore_model(sess=sess)
             sess.run(tf.tables_initializer())
             sess.run(data_init_op)
-
-            infer_batch_data = sess.run(model.next_batch)
-            (image_ids, image_features, captions, targets,
-             caption_ids, target_ids, caption_lengths, target_lengths) = infer_batch_data
-            for idx, image_id in enumerate(image_ids):
-                image_feature = image_features[idx].reshape(1, -1)
-                predict_captions = generator.beam_search(sess, image_feature)
-                for idx, caption in enumerate(predict_captions):
-                    caption_text = [self.index2token[idx] for idx in caption.sentence]
-                    print("beam_idx:{:1d}, logprob:{:.4f}, caption:{}"
-                          .format(idx, caption.logprob, ''.join(caption_text)))
+            global_step = tf.train.global_step(sess, model.global_step_tensor)
+            while True:  # train each batch in a epoch
+                try:
+                    infer_batch_data = sess.run(model.next_batch)
+                    (image_ids, image_features, captions, targets,
+                     caption_ids, target_ids, caption_lengths, target_lengths) = infer_batch_data
+                    predict_caption_ids = self._internal_infer(model=model, sess=sess,
+                                                               image_features=image_features)
+                    for idx, predict_ids in enumerate(predict_caption_ids):
+                        caption = [self.index2token[id] for id in predict_ids]
+                        print("caption={}".format(caption))
+                except tf.errors.OutOfRangeError:
+                    print("Infer finished at global_step={0}".format(global_step))
+                    break  # break the training while True
 
     def get_test_images(self):
         feature_manager = FeatureExtractor(sess=None)

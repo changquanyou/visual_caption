@@ -127,7 +127,7 @@ class CaptionGenerator(object):
         state = sess.run(self.model.initial_state, feed_dict=feed_dict)
         return state
 
-    def _inference_step(self, sess, input_feed_list, state_feed_list, max_caption_length):
+    def _inference_step(self, sess, input_feed_list, state_feed_list, max_caption_length, image_feature):
 
         mask = np.zeros((1, max_caption_length))
         mask[:, 0] = 1
@@ -137,6 +137,7 @@ class CaptionGenerator(object):
         for input, state in zip(input_feed_list, state_feed_list):
             feed_dict = {self.model.input_seqs: input,
                          self.model.state_feed: state,
+                         self.model.image_feature: image_feature,
                          self.model.input_mask: mask,
                          self.model.keep_prob: 1.0}
             softmax, new_state = sess.run(fetches=[self.model.softmax,
@@ -178,7 +179,8 @@ class CaptionGenerator(object):
             softmax, new_states, metadata = self._inference_step(sess,
                                                                  input_feed,
                                                                  state_feed,
-                                                                 self.max_caption_length)
+                                                                 self.max_caption_length,
+                                                                 feature)
 
             for i, partial_caption in enumerate(partial_captions_list):
                 word_probabilities = softmax[i][0]
