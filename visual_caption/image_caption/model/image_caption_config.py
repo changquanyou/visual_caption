@@ -5,7 +5,13 @@ from __future__ import print_function
 from __future__ import unicode_literals  # compatible with python3 unicode coding
 
 from visual_caption.base.model.base_model_config import BaseModelConfig
+import os
+from pathlib import Path
 
+home = str(Path.home())  # home dir
+base_data_dir = os.path.join(home, 'data')
+model_data_dir = os.path.join(base_data_dir, "tf/models")
+inception_resnet_v2_ckpt = os.path.join(model_data_dir, "inception_resnet_v2_2016_08_30.ckpt")
 
 class ImageCaptionConfig(BaseModelConfig):
     def __init__(self, data_config, model_name):
@@ -32,6 +38,9 @@ class ImageCaptionConfig(BaseModelConfig):
         self.num_attention_unit = 100
         self.num_attention_layer = 20
         self.beam_width = 0
+
+        self.inception_resnet_v2_ckpt = inception_resnet_v2_ckpt
+
         pass
 
     pass

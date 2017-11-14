@@ -16,12 +16,12 @@ max_max_epoch = 100
 
 # state learning rate information and configuration
 
-learning_start_decay_step = 200000
-learning_rate = 1.e-2
+learning_start_decay_step = 50000
+learning_rate = 1.e-4
 learning_rate_decay = 0.98
-learning_rate_step = 100000
+learning_rate_step = 20000
 
-dropout_keep_prob = 0.5
+dropout_keep_prob = 0.6
 initializer_scale = 0.08
 early_stopping = 100
 
@@ -86,7 +86,7 @@ class BaseModelConfig(BaseConfig):
         self.num_gpus = 1
 
         config = tf.ConfigProto()
-        config.gpu_options.per_process_gpu_memory_fraction = 0.8  # 程序最多只能占用指定80%的gpu显存
+        config.gpu_options.per_process_gpu_memory_fraction = 0.9  # 程序最多只能占用指定80%的gpu显存
         config.gpu_options.allow_growth = True  # 程序按需申请内存
         config.allow_soft_placement = True
         config.log_device_placement = False

@@ -40,9 +40,15 @@ class BaseModel(object):
         self.batch_size = self.model_config.batch_size
         self.next_batch = self.data_reader.get_next_batch(batch_size=self.batch_size)
 
-        self.initializer = tf.random_uniform_initializer(
-            minval=-self.model_config.initializer_scale,
-            maxval=self.model_config.initializer_scale)
+        # To match the "Show Attend Tell" paper we initialize all variables with a
+        # truncated_normal initializer.
+        self.initializer = tf.contrib.layers.xavier_initializer()
+        self.const_initializer = tf.constant_initializer(0.0)
+        self.emb_initializer = tf.random_uniform_initializer(minval=-1.0, maxval=1.0)
+        #
+        # self.initializer = tf.random_uniform_initializer(
+        #     minval=-self.model_config.initializer_scale,
+        #     maxval=self.model_config.initializer_scale)
 
         # build model
         self._build_model()
@@ -107,21 +113,19 @@ class BaseModel(object):
     @define_scope(scope_name='optimizer')
     def _build_optimizer(self):
         config = self.model_config
-        # Gradients and SGD update operation for training the model.
-        # Arrange for the embedding vars to appear at the beginning.
         self.learning_rate = tf.constant(config.learning_rate)
         if self.mode == tf.contrib.learn.ModeKeys.TRAIN:
-        #     self.learning_rate = tf.cond(
-        #         self.global_step_tensor < config.start_decay_step,
-        #         lambda: self.learning_rate,
-        #         lambda: tf.train.exponential_decay(
-        #             learning_rate=self.learning_rate,
-        #             global_step=(self.global_step_tensor - config.start_decay_step),
-        #             decay_steps=config.decay_steps,
-        #             decay_rate=config.decay_rate,
-        #             staircase=True))
-        #     tf.summary.scalar('learning_rate', self.learning_rate)
-            self.optimizer = tf.train.MomentumOptimizer(learning_rate=self.learning_rate, momentum=0.9)
+            self.learning_rate = tf.cond(
+                self.global_step_tensor < config.start_decay_step,
+                lambda: self.learning_rate,
+                lambda: tf.train.exponential_decay(
+                    learning_rate=self.learning_rate,
+                    global_step=(self.global_step_tensor - config.start_decay_step),
+                    decay_steps=config.decay_steps,
+                    decay_rate=config.decay_rate,
+                    staircase=True))
+            tf.summary.scalar('learning_rate', self.learning_rate)
+            self.optimizer = tf.train.AdamOptimizer(learning_rate=self.learning_rate)
 
     @timeit
     @define_scope(scope_name='gradients')
@@ -143,14 +147,14 @@ class BaseModel(object):
          Set up the training ops.
          """
         if not self.mode == ModeKeys.INFER:
-        #     trainables = tf.trainable_variables()
-        #     grads_and_vars = zip(self._gradients, trainables)
-        #     self.train_op = self.optimizer.apply_gradients(grads_and_vars=grads_and_vars,
-        #                                                    global_step=self.global_step_tensor,
-        #                                                    name='train_step')
+            trainables = tf.trainable_variables()
+            grads_and_vars = zip(self._gradients, trainables)
+            self.train_op = self.optimizer.apply_gradients(grads_and_vars=grads_and_vars,
+                                                           global_step=self.global_step_tensor,
+                                                           name='train_step')
             self.train_op = self.optimizer.minimize(self.loss,
-                                                global_step=self.global_step_tensor,
-                                                name='train_step')
+                                                    global_step=self.global_step_tensor,
+                                                    name='train_step')
 
     @timeit
     @define_scope(scope_name='summaries')

@@ -5,82 +5,77 @@ from __future__ import print_function
 from __future__ import unicode_literals  # compatible with python3 unicode coding
 
 import tensorflow as tf
-from tensorflow.contrib import seq2seq
+from tensorflow.contrib import slim
 from tensorflow.contrib.learn import ModeKeys
-from tensorflow.python.ops.rnn_cell_impl import GRUCell, DropoutWrapper
+from tensorflow.contrib.rnn import GRUCell, DropoutWrapper
 
-from visual_caption.base.model.base_model import BaseModel
+from slim.nets.inception_resnet_v2 import inception_resnet_v2_arg_scope, inception_resnet_v2
 from visual_caption.image_caption.data.data_embedding import ImageCaptionDataEmbedding
+from visual_caption.image_caption.model.image_rnn_model import ImageRNNModel
 from visual_caption.utils.decorator_utils import timeit, define_scope
 
 
-class ImageRNNModel(BaseModel):
+class FasterRCNNModel(ImageRNNModel):
     def __init__(self, model_config, data_reader, mode):
-        super(ImageRNNModel, self).__init__(
-            model_config=model_config,
-            data_reader=data_reader,
-            mode=mode
-        )
+        super(FasterRCNNModel, self).__init__(
+            model_config=model_config, data_reader=data_reader, mode=mode)
+        pass
 
     @timeit
     @define_scope(scope_name='inputs')
     def _build_inputs(self):
         data_type = self.model_config.data_type
-        visual_feature_size = self.model_config.data_config.visual_feature_size
-        # An int32 0/1 Tensor with shape [batch_size, padded_length].
-        self.input_mask = tf.placeholder(tf.int32, [None, None], name='input_mask')
 
-        if self.mode == ModeKeys.INFER:
-            # In inference mode, images and inputs are fed via placeholders.
-            self.input_feeds = tf.placeholder(dtype=tf.int64,
-                                              shape=[None],  # batch_size
-                                              name="input_feeds")
-            input_seqs = tf.expand_dims(self.input_feeds, 1)
-            # A float32 Tensor with shape [batch_size, image_feature_size].
-            self.image_features = tf.placeholder(dtype=tf.float32,
-                                                 shape=[None, visual_feature_size],
-                                                 name='image_features')
-            self.input_seqs = input_seqs
-
-
-        else:
-
-            (image_ids, image_features, captions, targets,
-             caption_ids, target_ids, caption_lengths, target_lengths) = self.next_batch
-
-            self.image_features = image_features
-            self.image_ids = image_ids
-
-            self.input_seqs = caption_ids
-            self.target_seqs = target_ids
-
-            self.input_lengths = caption_lengths
-            self.target_lengths = target_lengths
+        self.image_ids = tf.placeholder(shape=[None],
+                                        name='image_ids',
+                                        dtype=tf.string)
+        self.input_images = tf.placeholder(shape=[None, 299, 299, 3],
+                                           name='input_images',
+                                           dtype=data_type)
+        self.input_seqs = tf.placeholder(shape=[None, None],
+                                         name='input_seqs',
+                                         dtype=tf.int32)
+        self.target_seqs = tf.placeholder(shape=[None, None],
+                                          name='target_seqs',
+                                          dtype=tf.int32)
+        self.input_lengths = tf.placeholder(shape=[None],
+                                            name='input_lengths',
+                                            dtype=tf.int32)
+        self.target_lengths = tf.placeholder(shape=[None],
+                                             name='target_lengths',
+                                             dtype=tf.int32)
 
         # replace default model config batch_size with data pipeline batch_size
-        self.batch_size = tf.shape(self.image_features)[0]
+        self.batch_size = tf.shape(self.input_images)[0]
         # Maximum decoder time_steps in current batch
-        self.input_lengths = tf.reduce_sum(tf.sign(self.input_seqs), 1)
         self.max_seq_length = self.model_config.length_max_output
-
-        pass
 
     @timeit
     @define_scope(scope_name='embeddings')
     def _build_embeddings(self):
         self._data_embedding = ImageCaptionDataEmbedding()
-        embedding_size = self._data_embedding.embedding_size
-
         with tf.variable_scope("seq_embedding"), tf.device("/cpu:0"):
             self.embedding_map = tf.Variable(self._data_embedding.token_embedding_matrix,
                                              dtype=self.model_config.data_type,
                                              trainable=self.model_config.train_embeddings,
                                              name='embedding_map')
-
         self.input_seq_embeddings = tf.nn.embedding_lookup(params=self.embedding_map,
                                                            ids=self.input_seqs,
                                                            name="input_seq_embeddings")
 
+        pass
+
+    @timeit
+    def _build_encoder(self):
+        scaled_input_tensor = tf.scalar_mul((1.0 / 255), self.input_images)
+        scaled_input_tensor = tf.subtract(scaled_input_tensor, 0.5)
+        scaled_input_tensor = tf.multiply(scaled_input_tensor, 2.0)
+        arg_scope = inception_resnet_v2_arg_scope()
+        with slim.arg_scope(arg_scope):
+            logits, end_points = inception_resnet_v2(scaled_input_tensor, is_training=True)
+        self.image_features = end_points['PreLogitsFlatten']
+
+        embedding_size = self._data_embedding.embedding_size
         # Map inception output into embedding space.
         with tf.variable_scope("image_embedding") as scope:
             image_embeddings = tf.contrib.layers.fully_connected(
@@ -94,7 +89,6 @@ class ImageRNNModel(BaseModel):
         # Save the embedding size in the graph.
         tf.constant(embedding_size, name="embedding_size")
         self.image_embeddings = image_embeddings
-
         pass
 
     @timeit
@@ -109,16 +103,17 @@ class ImageRNNModel(BaseModel):
         pass
 
     @timeit
-    @define_scope(scope_name='graph')
-    def _build_graph(self):
+    @define_scope("decoder")
+    def _build_decoder(self):
         num_units = self.model_config.num_hidden_unit
-
+        data_type = self.model_config.data_type
         # put token begin as start state
         token2index = self._data_embedding.token2index
         token_begin = self.model_config.data_config.token_begin
         token_begin_ids = tf.fill([self.batch_size], token2index[token_begin])
         token_begin_embeddings = tf.nn.embedding_lookup(params=self.embedding_map, ids=token_begin_ids)
 
+        # for initial state inputs
         start_embeddings = tf.concat(values=[token_begin_embeddings, self.image_embeddings], axis=-1)
         start_embeddings = tf.nn.l2_normalize(start_embeddings, dim=-1)
 
@@ -131,35 +126,34 @@ class ImageRNNModel(BaseModel):
         input_embeddings = tf.nn.l2_normalize(input_embeddings, dim=-1)
         # input_embeddings = self.input_seq_embeddings
 
-        with tf.variable_scope("RNN", initializer=self.initializer, reuse=tf.AUTO_REUSE) as rnn_scope:
-            # Feed the image embeddings to set the initial RNN state.
+        with tf.variable_scope("rnn_decoder", initializer=self.initializer, reuse=tf.AUTO_REUSE) as rnn_scope:
             # forward RNN cell
             cell_fw = self.__create_rnn_cell(num_units=num_units)
             # backward RNN cell
             cell_bw = self.__create_rnn_cell(num_units=num_units)
 
-            zero_state_fw = cell_fw.zero_state(batch_size=self.batch_size, dtype=tf.float32)
+            # Feed the image embeddings to set the initial RNN state.
+            zero_state_fw = cell_fw.zero_state(batch_size=self.batch_size, dtype=data_type)
             _, initial_state_fw = cell_fw(start_embeddings, zero_state_fw)
-
-            zero_state_bw = cell_bw.zero_state(batch_size=self.batch_size, dtype=tf.float32)
+            zero_state_bw = cell_bw.zero_state(batch_size=self.batch_size, dtype=data_type)
             _, initial_state_bw = cell_bw(start_embeddings, zero_state_bw)
 
         if self.mode == ModeKeys.INFER:
             # In inference mode, use concatenated states for convenient feeding and
             # fetching.
             self.initial_states = tf.concat(tf.concat([initial_state_fw, initial_state_bw], axis=-1),
-                                            axis=1, name="initial_state")
-
+                                            axis=1, name="initial_states")
             # Placeholder for feeding a batch of concatenated states.
             self.state_feeds = tf.placeholder(shape=[None, cell_fw.state_size + cell_bw.state_size],
-                                              name="state_feed", dtype=tf.float32)
+                                              name="state_feeds", dtype=data_type)
 
-            state_tuple_fw, state_tuple_bw = tf.split(value=self.state_feeds, num_or_size_splits=2, axis=1)
+            state_tuple_fw, state_tuple_bw = tf.split(value=self.state_feeds,
+                                                      num_or_size_splits=2, axis=1)
 
             inputs_fw = tf.squeeze(input_embeddings, axis=[1], name="input_fw")
             inputs_bw = tf.squeeze(input_embeddings, axis=[1], name="input_bw")
 
-            # Run a single step.
+            # Run a single step for forward and backward.
             outputs_fw, state_tuple_new_fw = cell_fw(inputs=inputs_fw, state=state_tuple_fw)
             outputs_bw, state_tuple_new_bw = cell_bw(inputs=inputs_bw, state=state_tuple_bw)
 
@@ -182,43 +176,30 @@ class ImageRNNModel(BaseModel):
         self.outputs = tf.concat(outputs, -1)
         self.final_states = tf.concat(final_states, -1)
 
+        pass
+
     @timeit
-    @define_scope(scope_name="losses")
-    def _build_loss(self):
-        # Compute logits and weights
-        vocab_size = self._data_embedding.vocab_size
-        with tf.variable_scope("logits") as logits_scope:
-            logits = tf.contrib.layers.fully_connected(
-                inputs=self.outputs,
-                num_outputs=vocab_size,
-                activation_fn=None,
-                weights_initializer=self.initializer,
-                scope=logits_scope)
+    @define_scope("graph")
+    def _build_graph(self):
+        self._build_encoder()
+        self._build_decoder()
 
-        self.predictions = tf.cast(tf.argmax(logits, axis=-1), tf.int32)
+    @timeit
+    @define_scope(scope_name='optimizer')
+    def _build_optimizer(self):
+        config = self.model_config
+        self.learning_rate = tf.constant(config.learning_rate)
+        if self.mode == tf.contrib.learn.ModeKeys.TRAIN:
+            self.optimizer = tf.train.AdamOptimizer(learning_rate=self.learning_rate)
 
-        if self.mode == ModeKeys.INFER:
-            self.softmax = tf.nn.softmax(logits, name="softmax")
-        else:
-            weights = tf.sequence_mask(lengths=self.target_lengths,
-                                       dtype=self.outputs.dtype,
-                                       name='masks')
-            batch_loss = seq2seq.sequence_loss(logits=logits,
-                                               targets=self.target_seqs,
-                                               weights=weights)
-            self.loss = batch_loss
-            tf.losses.add_loss(batch_loss)
-            total_loss = tf.losses.get_total_loss()
-            # Add summaries.
-            tf.summary.scalar("losses/batch_loss", batch_loss)
-            tf.summary.scalar("losses/total_loss", total_loss)
-            self.total_loss = total_loss
-            self.target_cross_entropy_losses = batch_loss  # Used in evaluation.
-            self.target_cross_entropy_loss_weights = weights  # Used in evaluation.
+    @timeit
+    @define_scope(scope_name='gradients')
+    def _build_gradients(self):
+        pass
 
-            correct_prediction = tf.equal(self.predictions, self.target_seqs)
-            batch_accuracy = tf.div(tf.reduce_sum(
-                tf.multiply(tf.cast(correct_prediction, tf.float32), weights)),
-                tf.reduce_sum(weights), name="batch_accuracy")
-            self.accuracy = batch_accuracy
-            tf.summary.scalar("accuracy", self.accuracy)
+    @timeit
+    @define_scope(scope_name='train_op')
+    def _build_train_op(self):
+        if not self.mode == ModeKeys.INFER:
+            self.train_op = self.optimizer.minimize(
+                self.loss, name='train_step', global_step=self.global_step_tensor)

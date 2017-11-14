@@ -257,16 +257,13 @@ class RNNCaptionRunner(BaseRunner):
         batch_size = len(image_features)
         feed_dict = {model.image_features: image_features}
         initial_states = sess.run(fetches=model.initial_states, feed_dict=feed_dict)
-
         # the first step inference
         infer_fetches = [model.predictions, model.final_states]
         begin_inputs = [self.token_begin_id for _ in range(batch_size)]
-
         feed_dict = {model.image_features: image_features,
                      model.input_feeds: begin_inputs,
                      model.state_feeds: initial_states}
         predict_ids, new_states = sess.run(fetches=infer_fetches, feed_dict=feed_dict)
-
         caption_ids = [[id] for id in predict_ids]
         for i in range(model.max_seq_length):  # for each inference step
             # feed_dict for next step
