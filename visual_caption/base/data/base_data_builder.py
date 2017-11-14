@@ -81,6 +81,6 @@ class BaseDataBuilder(object):
         pass
 
     @abstractmethod
-    def build_validation_data(self):
+    def build_valid_data(self):
         raise NotImplementedError()
         pass

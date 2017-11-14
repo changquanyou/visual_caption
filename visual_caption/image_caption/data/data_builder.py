@@ -175,10 +175,10 @@ class ImageCaptionDataBuilder(BaseDataBuilder):
                               output_file=output_file)
         pass
 
-    def build_validation_data(self):
-        image_dir = self.data_config.validation_image_dir
+    def build_valid_data(self):
+        image_dir = self.data_config.valid_image_dir
         data_gen = self.data_loader.load_validation_data()
-        output_file = self.data_config.validation_tf_data_file
+        output_file = self.data_config.valid_tf_data_file
         self._build_tfrecords(image_dir=image_dir,
                               data_gen=data_gen,
                               output_file=output_file)
@@ -189,8 +189,8 @@ def main(_):
     data_config = ImageCaptionDataConfig()
     data_builder = ImageCaptionDataBuilder(data_config=data_config)
 
-    data_builder.build_train_data()
-    data_builder.build_validation_data()
+    # data_builder.build_train_data()
+    data_builder.build_valid_data()
     data_builder.build_test_data()
 
 

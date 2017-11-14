@@ -86,8 +86,8 @@ class ImageCaptionDataLoader(BaseDataLoader):
                                        image_dir=self.data_config.train_image_dir)
 
     def load_validation_data(self):
-        return self.load_raw_generator(json_data_file=self.data_config.validation_json_data,
-                                       image_dir=self.data_config.validation_image_dir)
+        return self.load_raw_generator(json_data_file=self.data_config.valid_json_data,
+                                       image_dir=self.data_config.valid_image_dir)
 
 
 def main(_):
