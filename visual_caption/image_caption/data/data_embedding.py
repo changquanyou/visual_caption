@@ -31,7 +31,7 @@ class ImageCaptionDataEmbedding(object):
         :return:
         """
         print("begin char txt generation for {}".format(json_data_file))
-        raw_data_gen = self.load_raw_generator(
+        raw_data_gen = self.data_loader.load_raw_generator(
             json_data_file=json_data_file,
             image_dir=image_dir
         )
@@ -43,8 +43,8 @@ class ImageCaptionDataEmbedding(object):
                         if len(str.strip(caption)) > 0:
                             line = [char + ' ' for char in caption]
                             # separate each token with a whitespace
-                            line.insert(0, self.data_config.begin_token + " ")
-                            line.append(self.data_config.end_token)
+                            line.insert(0, self.data_config.token_begin + " ")
+                            line.append(self.data_config.token_end)
                             line.append('\n')
                             f_txt.writelines(line)
                 if batch % 1000 == 0:
@@ -63,8 +63,8 @@ class ImageCaptionDataEmbedding(object):
         print("begin char txt generation ")
         self.build_char_text(json_data_file=self.data_config.train_json_data,
                              image_dir=self.data_config.train_image_dir)
-        self.build_char_text(json_data_file=self.data_config.validation_json_data,
-                             image_dir=self.data_config.validation_image_dir)
+        self.build_char_text(json_data_file=self.data_config.valid_json_data,
+                             image_dir=self.data_config.valid_image_dir)
         print("end char txt  generation")
 
     def build_embeddings(self):
@@ -161,10 +161,11 @@ class ImageCaptionDataEmbedding(object):
             if token in self.token2index.keys():
                 ids.append(self.token2index[token])
             else:
-                ids.append(self.token2index[self.data_config.unknown_token])
+                ids.append(self.token2index[self.data_config.token_unknown])
         return ids
 
 
 if __name__ == '__main__':
     data_embeddings = ImageCaptionDataEmbedding()
-    data_embeddings.visualize(model=None)
+    data_embeddings.build_char_all()
+    data_embeddings.build_embeddings()

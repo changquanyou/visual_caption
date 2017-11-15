@@ -17,9 +17,9 @@ from gensim.models.word2vec import Word2Vec
 logging.basicConfig(format='%(asctime)s : %(levelname)s : %(message)s', level=logging.INFO)
 
 home = str(Path.home())
-caption_dir = os.path.join(home, 'data/ai_challenge/captions')
+caption_dir = os.path.join(home, 'data/ai_challenge/image_caption/captions')
 caption_char_file = os.path.join(caption_dir, 'caption_char.txt')
-embedding_dir = os.path.join(home, 'data/ai_challenge/embeddings')
+embedding_dir = os.path.join(home, 'data/ai_challenge/image_caption/embeddings')
 
 
 class Embedding_Test(object):
@@ -80,4 +80,4 @@ def build_vocab(filename):
 
 
 if __name__ == '__main__':
-    Embedding_Test().test_embeddings()
+    build_vocab(filename=caption_char_file)

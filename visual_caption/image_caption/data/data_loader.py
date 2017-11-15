@@ -93,8 +93,6 @@ class ImageCaptionDataLoader(BaseDataLoader):
 def main(_):
     data_loader = ImageCaptionDataLoader()
     # data_loader.build_char_all()
-    data_loader.build_embeddings()
-
 
 if __name__ == '__main__':
     tf.app.run()
