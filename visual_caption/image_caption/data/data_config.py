@@ -11,6 +11,7 @@ from visual_caption.base.data.base_data_config import BaseDataConfig
 TOKEN_BEGIN = "<S>"
 TOKEN_END = "</S>"
 TOKEN_UNKNOWN = "<UNKNOWN>"
+TOKEN_UNKNOWN_ID = 0
 
 MODEL_NAME = 'image_caption'
 MODE = 'train'
@@ -28,8 +29,6 @@ class ImageCaptionDataConfig(BaseDataConfig):
         self.tf_data_dir = os.path.join(self.model_data_dir,
                                         'inception_resnet_v2')
 
-
-
         # for train
         self.train_rawdata_dir = os.path.join(self.model_data_dir,
                                               "ai_challenger_caption_train_20170902")
@@ -44,15 +43,15 @@ class ImageCaptionDataConfig(BaseDataConfig):
 
         # for validation
         self.valid_rawdata_dir = os.path.join(self.model_data_dir,
-                                                   "ai_challenger_caption_validation_20170910")
+                                              "ai_challenger_caption_validation_20170910")
         self.valid_json_data = os.path.join(self.valid_rawdata_dir,
-                                                 "caption_validation_annotations_20170910.json")
+                                            "caption_validation_annotations_20170910.json")
         self.valid_image_dir = os.path.join(self.valid_rawdata_dir,
-                                                 "caption_validation_images_20170910")
+                                            "caption_validation_images_20170910")
         self.valid_data_dir = os.path.join(self.tf_data_dir,
-                                                "valid")
+                                           "valid")
         self.valid_tf_data_file = os.path.join(self.valid_data_dir,
-                                                    "image_caption_validation")
+                                               "image_caption_validation")
 
         # for test
         self.test_rawdata_dir = os.path.join(self.model_data_dir,
@@ -80,11 +79,15 @@ class ImageCaptionDataConfig(BaseDataConfig):
         self.word2vec_model = os.path.join(self.embedding_dir, word2vec_file_name)
         self.vocab_file = os.path.join(self.embedding_dir, "vocab.txt")
 
+        self.vocab_char_file = os.path.join(self.embedding_dir, "vocab_char.txt")
+        self.vocab_word_file = os.path.join(self.embedding_dir, "vocab_word.txt")
+
         # for encoder-decoder model
         self.seq_max_length = 100
         self.token_unknown = TOKEN_UNKNOWN
         self.token_begin = TOKEN_BEGIN
         self.token_end = TOKEN_END
+        self.token_unknown_id = TOKEN_UNKNOWN_ID
 
         # for tfrecord format data
         # Name of the SequenceExample context feature containing image data.
@@ -112,15 +115,12 @@ class ImageCaptionDataConfig(BaseDataConfig):
         # Number of threads for image preprocessing. Should be a multiple of 2.
         self.num_preprocess_threads = 4
 
-
-
     pass
 
 
 class ImageCaptionFullDataConfig(ImageCaptionDataConfig):
-
-    def __init__(self,mode=MODE, model_name=MODEL_NAME):
-        super(ImageCaptionFullDataConfig,self).__init__(
+    def __init__(self, mode=MODE, model_name=MODEL_NAME):
+        super(ImageCaptionFullDataConfig, self).__init__(
             mode=mode, model_name=model_name
         )
         self.tf_data_dir = os.path.join(self.model_data_dir,
@@ -128,10 +128,24 @@ class ImageCaptionFullDataConfig(ImageCaptionDataConfig):
         self.train_data_dir = os.path.join(self.tf_data_dir,
                                            "train")
         self.valid_data_dir = os.path.join(self.tf_data_dir,
-                                                "valid")
+                                           "valid")
         self.test_data_dir = os.path.join(self.tf_data_dir,
                                           "test")
-
         self.visual_feature_size = 1536
-        self.model_name="image_caption_full"
+        self.model_name = "image_caption_full"
 
+
+class ImageCaptionAttentionDataConfig(ImageCaptionDataConfig):
+    def __init__(self, mode=MODE, model_name=MODEL_NAME):
+        super(ImageCaptionAttentionDataConfig, self).__init__(
+            mode=mode, model_name=model_name
+        )
+        self.tf_data_dir = os.path.join(self.model_data_dir,
+                                        'faster_rcnn')
+        self.train_data_dir = os.path.join(self.tf_data_dir,
+                                           "train")
+        self.valid_data_dir = os.path.join(self.tf_data_dir,
+                                           "valid")
+        self.test_data_dir = os.path.join(self.tf_data_dir,
+                                          "test")
+        self.model_name = "image_caption_attention"

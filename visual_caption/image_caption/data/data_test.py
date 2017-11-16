@@ -66,17 +66,29 @@ def build_vocab(filename):
         texts = [[char for char in sentence.split()]
                  for sentence in sentences]
 
-    frequency = defaultdict(int)
-    for text in texts:
-        for token in text:
-            frequency[token] += 1
+    # frequency = defaultdict(int)
+    # for text in texts:
+    #     for token in text:
+    #         frequency[token] += 1
 
-    # texts = [[token for token in text if frequency[token] > 1]
+    # texts = [[token for token in text if frequency[token] >= 1]
     #          for text in texts]
     dictionary = corpora.Dictionary(texts)
-    char_dict_file = os.path.join(caption_dir, 'caption_char.dict')
-    dictionary.save(char_dict_file)  # store the dictionary, for future reference
-    pprint(dictionary)
+    vocabl_char_file = os.path.join(embedding_dir, 'vocab_char.txt')
+    dictionary.save_as_text(fname=vocabl_char_file)
+
+    dictionary = corpora.Dictionary().load_from_text(vocabl_char_file)
+
+    index2token = dictionary.id2token
+    token2index = dictionary.token2id
+
+    # dictionary.save_as_text(dict_txt_file)
+
+    # dictionary = dictionary.load_from_text(fname=caption_char_file)
+
+    # char_dict_file = os.path.join(caption_dir, 'caption_char.dict')
+    # dictionary.save(char_dict_file)  # store the dictionary, for future reference
+    # pprint(dictionary)
 
 
 if __name__ == '__main__':

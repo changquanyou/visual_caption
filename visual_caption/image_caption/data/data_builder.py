@@ -24,7 +24,6 @@ class ImageDecoder(object):
     def __init__(self):
         # Create a single TensorFlow Session for all image decoding calls.
         self._sess = tf.Session()
-
         # TensorFlow ops for JPEG decoding.
         self._encoded_jpeg = tf.placeholder(dtype=tf.string)
         self._decode_jpeg = tf.image.decode_jpeg(self._encoded_jpeg, channels=3)
@@ -36,13 +35,10 @@ class ImageDecoder(object):
         assert image.shape[2] == 3
         return image
 
-
 class ImageCaptionDataBuilder(BaseDataBuilder):
     """
     Data Building:
-
         Data Builder of train, test and validation with tfrecord format
-
     """
 
     def __init__(self, data_config):
@@ -53,7 +49,6 @@ class ImageCaptionDataBuilder(BaseDataBuilder):
         self.image_decoder = ImageDecoder()
         # self.feature_manager = FeatureManager()
         self.feature_extractor = FeatureExtractor()
-
 
     def _build_tfrecords(self, image_dir, data_gen, output_file):
         """
@@ -183,6 +178,9 @@ class ImageCaptionDataBuilder(BaseDataBuilder):
                               data_gen=data_gen,
                               output_file=output_file)
         pass
+
+class ImageCaptionFasterRCNNDataBuild(ImageCaptionDataBuilder):
+    pass
 
 
 def main(_):

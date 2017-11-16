@@ -5,6 +5,7 @@ from __future__ import print_function
 from __future__ import unicode_literals  # compatible with python3 unicode coding
 
 import tensorflow as tf
+from gensim import corpora
 from tensorflow.python.ops import lookup_ops
 
 from visual_caption.base.data.base_data_reader import BaseDataReader
@@ -17,7 +18,6 @@ class ImageCaptionDataReader(BaseDataReader):
     """
         Read data for train, validation, test dataset with embedding model
     """
-
     def __init__(self, data_config):
         self._data_config = data_config
         self.data_embedding = ImageCaptionDataEmbedding()
@@ -34,8 +34,10 @@ class ImageCaptionDataReader(BaseDataReader):
                 tf.FixedLenFeature([], dtype=tf.string),
         }
         self.sequence_features = {
-            self._data_config.caption_text_name: tf.FixedLenSequenceFeature([], dtype=tf.string),
-            # self._data_config.caption_ids_name: tf.FixedLenSequenceFeature([], dtype=tf.int64)
+            self._data_config.caption_text_name:
+                tf.FixedLenSequenceFeature([], dtype=tf.string),
+            # self._data_config.caption_ids_name:
+            # tf.FixedLenSequenceFeature([], dtype=tf.int64)
         }
 
     def _mapping_dataset(self, dataset):
@@ -122,7 +124,16 @@ class ImageCaptionDataReader(BaseDataReader):
         data = (image_id, image_feature, caption)
         return data
 
-
+class ImageCaptionAttentionDataReader(BaseDataReader):
+    def __init__(self,data_config):
+        super(ImageCaptionAttentionDataReader,self).__init__(
+            data_config = data_config
+        )
+        vocab_char_file = self._data_config.vocab_char_file
+        dictionary = corpora.Dictionary().load_from_text(vocab_char_file)
+        self.index2token = dictionary.id2token
+        self.token2index = dictionary.token2id
+    pass
 
 def main(_):
     """

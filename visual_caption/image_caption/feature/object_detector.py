@@ -20,7 +20,7 @@ home = str(Path.home())  # home dir
 base_data_dir = os.path.join(home, 'data')
 model_data_dir = os.path.join(base_data_dir, "tf/models/object_detection")
 
-MODEL_NAME = "faster_rcnn_nas_lowproposals_coco_2017_11_08"
+MODEL_NAME = "faster_rcnn_inception_resnet_v2_atrous_coco_2017_11_08"
 
 # Path to frozen detection graph. This is the actual model that is used for the object detection.
 PATH_TO_CKPT = os.path.join(model_data_dir, MODEL_NAME + '/frozen_inference_graph.pb')
@@ -141,5 +141,22 @@ def main(_):
                         detector.show(result=result)
 
 
+
+def restore():
+    summary_writer = tf.summary.FileWriter("./log/")
+
+    gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=0.6)
+    sess_config = tf.ConfigProto(gpu_options=gpu_options,
+                                 allow_soft_placement=True,
+                                 log_device_placement=False)
+
+
+    with tf.Session(config=sess_config) as sess:
+        server = tf.train.Saver()
+        server.restore(sess=sess,save_path=PATH_TO_CKPT)
+        detection_graph = sess.graph
+        summary_writer.add_graph(detection_graph)
+
+
 if __name__ == '__main__':
-    tf.app.run()
+    restore()
