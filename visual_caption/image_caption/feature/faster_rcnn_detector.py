@@ -26,9 +26,6 @@ BASE_MODEL_PATH = os.path.join(model_data_dir, MODEL_NAME)
 PATH_TO_CKPT = BASE_MODEL_PATH + '/frozen_inference_graph.pb'
 
 NUM_CLASSES = 90
-# Size, in inches, of the output images.
-IMAGE_SIZE = (12, 8)
-# List of the strings that is used to add correct label for each box.
 PATH_TO_LABELS = os.path.join(model_data_dir, 'data' + '/mscoco_label_map.pbtxt')
 
 
@@ -36,14 +33,9 @@ class DetectorConfig():
     model_ckpt = PATH_TO_CKPT
     path_labels = PATH_TO_LABELS
     num_classes = NUM_CLASSES
-    image_size = IMAGE_SIZE
 
 
-class FasterRCNN_Detector(object):
-    """
-    faster rcnn object extractor
-    """
-
+class FasterRCNNDetector(object):
     def __init__(self, config):
         self.config = config
         self._load_label_map()
@@ -94,32 +86,66 @@ class FasterRCNN_Detector(object):
 
         pass
 
-    @timeit
     def detect(self, image_np_expanded):
         feed_dict = {self.imput_images: image_np_expanded}
         results = self.sess.run(fetches=self.fetches,
                                 feed_dict=feed_dict)
         return results
 
+    def detect_image(self, image_path):
+        image = Image.open(image_path)
+        (img_width, img_height) = image.size
+        image_np = load_image_into_numpy_array(image)
+        image_np_expanded = np.expand_dims(image_np, axis=0)
+        detect_result = self.detect(image_np_expanded=image_np_expanded)
+        boxes, scores, classes, num = detect_result
+        confidence_score_list = np.squeeze(scores)
+        classes_list = np.squeeze(classes).astype(np.int32)
+        boxes_list = np.squeeze(boxes)
+
+        results = list()
+        for idx, confidence_score in enumerate(confidence_score_list):
+            # feature = features[idx]
+            box = boxes_list[idx]
+            x_min = box[0] * img_width
+            y_min = box[1] * img_height
+            x_max = box[2] * img_width
+            y_max = box[3] * img_height
+
+            bbox_dict = {
+                "x_min": x_min, "y_min": y_min,
+                "x_max": x_max, "y_max": y_max
+            }
+            class_id = classes_list[idx]
+            class_name = self.category_index.get(class_id).get('name')
+            # if confidence_score > 0.5:
+            data_dict = {
+                "class_id": class_id,
+                "class_name": class_name,
+                "confidence_score": confidence_score,
+                "bbox": bbox_dict
+            }
+            results.append(data_dict)
+            # print("\tidx={:4d}, class_name={:20}, score={:.8f}, real_box={}"
+            #       .format(idx, class_name, confidence_score, bbox_dict))
+        return results
+
 
 def load_images():
     data_config = ImageCaptionDataConfig()
     batch_size = 40
-    image_batch = list()
-    for file_path in Path(data_config.test_image_dir).glob('**/*'):
-        image_batch.append(file_path.absolute())
-
-        if len(image_batch) == batch_size:
-            yield image_batch
-            image_batch = list()
-
-    if len(image_batch) > 0:
-        yield image_batch
-    del image_batch
+    image_files = list()
+    for file_path in Path(data_config.train_image_dir).glob('**/*'):
+        image_files.append(file_path.absolute())
+        if len(image_files) == batch_size:
+            yield image_files
+            image_files = list()
+    if len(image_files) > 0:
+        yield image_files
 
 
 def get_img_id(img_path):
-    arrays = str(img_path).split('/')
+    arrays = img_path.split('/')
     return arrays[len(arrays) - 1].split('.')[0]
 
 
@@ -131,41 +157,16 @@ def load_image_into_numpy_array(image):
 
 def main(_):
     config = DetectorConfig()
-    detector = FasterRCNN_Detector(config=config)
-    category_index = detector.category_index
-
+    detector = FasterRCNNDetector(config=config)
     image_gen = load_images()
-    for batch, batch_images in enumerate(image_gen): # for each batch
-        for idx, image_path in enumerate(batch_images): # for each image
-
-            image = Image.open(image_path)
-            (img_width, img_height) = image.size
-            image_np = load_image_into_numpy_array(image)
-            image_np_expanded = np.expand_dims(image_np, axis=0)
-
-            result = detector.detect(image_np_expanded)
-
-            boxes, scores, classes, num = result
-            confidence_score_list = np.squeeze(scores)
-            classes_list = np.squeeze(classes).astype(np.int32)
-            boxes_list = np.squeeze(boxes)
-            # img_id width heigth bottem_left upper_right
-            img_id = get_img_id(str(image_path))
-            print('processing for img id:' + img_id)
-            # for each extracted bbox
-            for idx, confidence_score in enumerate(confidence_score_list):
-                # feature = features[idx]
-                box = boxes_list[idx]
-                x_min = box[0] * img_width
-                y_min = box[1] * img_height
-                x_max = box[2] * img_width
-                y_max = box[3] * img_height
-
-                real_box = [x_min, y_min, x_max, y_max]
-                class_name = category_index.get(classes_list[idx]).get('name')
-                # if confidence_score > 0.5:
-                print("\tidx={:4d}, class_name={:20}, score={:.8f}, real_box={}"
-                      .format(idx, class_name, confidence_score, real_box))
+    for batch, batch_images in enumerate(image_gen):
+        for idx, image_path in enumerate(batch_images):
+            results = detector.detect_image(image_path=image_path)
+            print("image_path={}".format(image_path))
+            for idx, data_dict in enumerate(results):
+                print("confidence_score={:.8f}, class_id={:2d}, class_name={:16}, bbox={}"
+                      .format(data_dict["confidence_score"], data_dict["class_id"],
+                              data_dict["class_name"], data_dict["bbox"]))
 
 
 if __name__ == '__main__':
