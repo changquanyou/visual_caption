@@ -25,6 +25,11 @@ model_data_dir = os.path.join(base_data_dir, "tf/models")
 class InceptionResnetV2FeatureExtractor(object):
     """
     inception_resnet_v2 feature extractor
+
+        input batched image_paths
+        output features for input image_paths
+
+
     """
 
     def __init__(self, sess=None):
@@ -34,7 +39,7 @@ class InceptionResnetV2FeatureExtractor(object):
         self.input_images = tf.placeholder(shape=[None, 299, 299, 3],
                                            dtype=tf.float32, name='input_images')
         if sess is None:
-            gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=0.6)
+            gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=0.8)
             sess_config = tf.ConfigProto(gpu_options=gpu_options,
                                          allow_soft_placement=True,
                                          log_device_placement=False)
@@ -67,7 +72,7 @@ class InceptionResnetV2FeatureExtractor(object):
 
 def load_images():
     data_config = ImageCaptionDataConfig()
-    batch_size = 40
+    batch_size = 101
     image_files = list()
     for file_path in Path(data_config.test_image_dir).glob('**/*'):
         image_files.append(file_path.absolute())
@@ -78,13 +83,20 @@ def load_images():
         yield image_files
 
 
+def get_img_id(img_path):
+    arrays = str(img_path).split('/')
+    return arrays[len(arrays) - 1].split('.')[0]
+
+
 def main(_):
     feature_extractor = InceptionResnetV2FeatureExtractor()
     data_gen = load_images()
     for batch, batch_data in enumerate(data_gen):
         features = feature_extractor.get_features(images=batch_data)
+        print("batch={:4d}, batch_size={:4d}".format(batch, len(batch_data)))
         for idx, image_path in enumerate(batch_data):
-            print("image_path={},\n feature={}\n".format(image_path,features[idx]))
+            print("\tidx={:4d}, image_id={:20}, feature_length={:4d}"
+                  .format(idx, get_img_id(image_path), len(features[idx])))
 
 
 if __name__ == '__main__':
