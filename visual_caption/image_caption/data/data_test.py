@@ -77,7 +77,7 @@ def build_vocab(filename):
     vocabl_char_file = os.path.join(embedding_dir, 'vocab_char.txt')
     dictionary.save_as_text(fname=vocabl_char_file)
 
-    dictionary = corpora.Dictionary().load_from_text(vocabl_char_file)
+    # dictionary = corpora.Dictionary().load_from_text(vocabl_char_file)
 
     index2token = dictionary.id2token
     token2index = dictionary.token2id
