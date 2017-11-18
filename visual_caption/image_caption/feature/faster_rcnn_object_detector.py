@@ -12,10 +12,8 @@ import tensorflow as tf
 from PIL import Image
 
 from object_detection.utils import label_map_util
-from tf_visgen.utils.decorator_utils import timeit
-from tf_visgen.visgen.data.data_config import VisualGenomeDataConfig
-
 from visual_caption.image_caption.data.data_config import ImageCaptionDataConfig
+from visual_caption.utils.decorator_utils import timeit
 
 home = str(Path.home())  # home dir
 base_data_dir = os.path.join(home, 'data')
@@ -41,7 +39,11 @@ class DetectorConfig():
     image_size = IMAGE_SIZE
 
 
-class FasterRCNN_FeatureExtractor(object):
+class FasterRCNN_Detector(object):
+    """
+    faster rcnn object extractor
+    """
+
     def __init__(self, config):
         self.config = config
         self._load_label_map()
@@ -92,6 +94,7 @@ class FasterRCNN_FeatureExtractor(object):
 
         pass
 
+    @timeit
     def detect(self, image_np_expanded):
         feed_dict = {self.imput_images: image_np_expanded}
         results = self.sess.run(fetches=self.fetches,
@@ -102,18 +105,21 @@ class FasterRCNN_FeatureExtractor(object):
 def load_images():
     data_config = ImageCaptionDataConfig()
     batch_size = 40
-    image_files = list()
+    image_batch = list()
     for file_path in Path(data_config.test_image_dir).glob('**/*'):
-        image_files.append(file_path.absolute())
-        if len(image_files) == batch_size:
-            yield image_files
-            image_files = list()
-    if len(image_files) > 0:
-        yield image_files
+        image_batch.append(file_path.absolute())
+
+        if len(image_batch) == batch_size:
+            yield image_batch
+            image_batch = list()
+
+    if len(image_batch) > 0:
+        yield image_batch
+    del image_batch
 
 
 def get_img_id(img_path):
-    arrays = img_path.split('/')
+    arrays = str(img_path).split('/')
     return arrays[len(arrays) - 1].split('.')[0]
 
 
@@ -125,17 +131,19 @@ def load_image_into_numpy_array(image):
 
 def main(_):
     config = DetectorConfig()
-    feature_extractor = FasterRCNN_FeatureExtractor(config=config)
-    category_index = feature_extractor.category_index
+    detector = FasterRCNN_Detector(config=config)
+    category_index = detector.category_index
 
     image_gen = load_images()
-    for batch, batch_images in enumerate(image_gen):
-        for idx, image_path in enumerate(batch_images):
+    for batch, batch_images in enumerate(image_gen): # for each batch
+        for idx, image_path in enumerate(batch_images): # for each image
+
             image = Image.open(image_path)
             (img_width, img_height) = image.size
             image_np = load_image_into_numpy_array(image)
             image_np_expanded = np.expand_dims(image_np, axis=0)
-            result = feature_extractor.detect(image_np_expanded)
+
+            result = detector.detect(image_np_expanded)
 
             boxes, scores, classes, num = result
             confidence_score_list = np.squeeze(scores)
@@ -144,6 +152,7 @@ def main(_):
             # img_id width heigth bottem_left upper_right
             img_id = get_img_id(str(image_path))
             print('processing for img id:' + img_id)
+            # for each extracted bbox
             for idx, confidence_score in enumerate(confidence_score_list):
                 # feature = features[idx]
                 box = boxes_list[idx]
