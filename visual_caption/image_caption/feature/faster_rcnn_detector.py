@@ -3,7 +3,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 from __future__ import unicode_literals  # compatible with python3 unicode coding
-
+import sys
 import os
 from pathlib import Path
 
@@ -12,6 +12,7 @@ import tensorflow as tf
 from PIL import Image
 
 from object_detection.utils import label_map_util
+sys.append('../../../')
 from visual_caption.image_caption.data.data_config import ImageCaptionDataConfig
 from visual_caption.utils.decorator_utils import timeit
 
