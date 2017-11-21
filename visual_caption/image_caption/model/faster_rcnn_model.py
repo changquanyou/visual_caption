@@ -10,7 +10,7 @@ from tensorflow.contrib.learn import ModeKeys
 from tensorflow.contrib.rnn import GRUCell, DropoutWrapper
 
 from slim.nets.inception_resnet_v2 import inception_resnet_v2_arg_scope, inception_resnet_v2
-sys.append('../../../')
+sys.path.append('../../../')
 from visual_caption.image_caption.data.data_embedding import ImageCaptionDataEmbedding
 from visual_caption.image_caption.model.image_rnn_model import ImageRNNModel
 from visual_caption.utils.decorator_utils import timeit, define_scope

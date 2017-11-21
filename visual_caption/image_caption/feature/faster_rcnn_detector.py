@@ -5,14 +5,14 @@ from __future__ import print_function
 from __future__ import unicode_literals  # compatible with python3 unicode coding
 import sys
 import os
+import json
 from pathlib import Path
-
 import numpy as np
 import tensorflow as tf
 from PIL import Image
 
 from object_detection.utils import label_map_util
-sys.append('../../../')
+sys.path.append('../../../')
 from visual_caption.image_caption.data.data_config import ImageCaptionDataConfig
 from visual_caption.utils.decorator_utils import timeit
 
@@ -25,10 +25,12 @@ MODEL_NAME = "faster_rcnn_inception_resnet_v2_atrous_coco_2017_11_08"
 BASE_MODEL_PATH = os.path.join(model_data_dir, MODEL_NAME)
 # Path to frozen detection graph. This is the actual model that is used for the object detection.
 PATH_TO_CKPT = BASE_MODEL_PATH + '/frozen_inference_graph.pb'
-
+train_out_put_dir = os.path.join(base_data_dir, 'detecate_feature/train')
+evaluate_out_put_dir = os.path.join(base_data_dir, 'detecate_feature/evaluate')
+test_out_put_dir = os.path.join(base_data_dir, 'detecate_feature/test')
 NUM_CLASSES = 90
 PATH_TO_LABELS = os.path.join(model_data_dir, 'data' + '/mscoco_label_map.pbtxt')
-
+TOP_NUMBER_THRESHOLD = 100
 
 class DetectorConfig():
     model_ckpt = PATH_TO_CKPT
@@ -160,15 +162,30 @@ def main(_):
     config = DetectorConfig()
     detector = FasterRCNNDetector(config=config)
     image_gen = load_images()
+    loop_num = 0
     for batch, batch_images in enumerate(image_gen):
         for idx, image_path in enumerate(batch_images):
             results = detector.detect_image(image_path=image_path)
-            print("image_path={}".format(image_path))
+            img_id = get_img_id(str(image_path))
+            index_flag = 0
+            result_list = []
+            img_id_file = open(os.path.join(train_out_put_dir,img_id), "w")
+            loop_num += 1
+            print('current fetch img feature ,loop number:{}'.format(loop_num))
             for idx, data_dict in enumerate(results):
-                print("confidence_score={:.8f}, class_id={:2d}, class_name={:16}, bbox={}"
-                      .format(data_dict["confidence_score"], data_dict["class_id"],
-                              data_dict["class_name"], data_dict["bbox"]))
-
+                if(index_flag == TOP_NUMBER_THRESHOLD):
+                    break
+                index_flag += 1
+                data_dict['confidence_score'] = float(str(data_dict['confidence_score']))
+                data_dict['class_id']=int(str(data_dict['class_id']))
+                data_dict['bbox']=str(data_dict['bbox'])
+                #img_id_file.write("\n".join(json.dumps(data_dict)))
+                result_list.append(json.dumps(data_dict)+"\n")
+                #print("confidence_score={:.8f}, class_id={:2d}, class_name={:16}, bbox={}"
+                #  .format(data_dict["confidence_score"], data_dict["class_id"],
+                #          data_dict["class_name"], data_dict["bbox"]))
+            img_id_file.writelines(result_list)
+            img_id_file.close() 
 
 if __name__ == '__main__':
     tf.app.run()
