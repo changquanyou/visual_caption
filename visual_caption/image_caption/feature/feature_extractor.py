@@ -3,13 +3,13 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 from __future__ import unicode_literals  # compatible with python3 unicode coding
-
+import sys
 import os
 from pathlib import Path
 
 import tensorflow as tf
 from sklearn.preprocessing import normalize
-
+sys.path.append('../../../')
 from visual_caption.image_caption.data.data_config import ImageCaptionDataConfig
 from visual_caption.utils import image_utils
 from visual_caption.utils.decorator_utils import timeit
@@ -93,6 +93,7 @@ def main(_):
     data_gen = load_images()
     for batch, batch_data in enumerate(data_gen):
         features = feature_extractor.get_features(images=batch_data)
+        print (features)
         print("batch={:4d}, batch_size={:4d}".format(batch, len(batch_data)))
         for idx, image_path in enumerate(batch_data):
             print("\tidx={:4d}, image_id={:20}, feature_length={:4d}"
