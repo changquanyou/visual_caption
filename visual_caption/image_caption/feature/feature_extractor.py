@@ -90,7 +90,7 @@ def get_img_id(img_path):
     arrays = str(img_path).split('/')
     return arrays[len(arrays) - 1].split('.')[0]
 
-
+#https://stackoverflow.com/questions/6494102/how-to-save-and-load-an-array-of-complex-numbers-using-numpy-savetxt
 def main(_):
     feature_extractor = InceptionResnetV2FeatureExtractor()
     data_gen = load_images()
@@ -102,11 +102,8 @@ def main(_):
         for idx, image_path in enumerate(batch_data):
             loop_num += 1
             img_id = get_img_id(image_path)
-            img_id_file = open(os.path.join(train_out_put_dir,img_id), "w")
-            img_id_file.writelines([np.array_str(features[idx])])
+            np.savetxt(os.path.join(train_out_put_dir,img_id), features[idx].view(float))
             print("\tidx={:4d}, image_id={:20}, feature_length={:4d},loop_number={:4d}"
                   .format(idx, img_id, len(features[idx]),loop_num))
-
-
 if __name__ == '__main__':
     tf.app.run()
