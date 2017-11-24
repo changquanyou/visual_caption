@@ -16,11 +16,13 @@ from visual_caption.utils.decorator_utils import timeit
 
 slim = tf.contrib.slim
 from slim.nets.inception_resnet_v2 import inception_resnet_v2_arg_scope, inception_resnet_v2
-
+import json
 home = str(Path.home())  # home dir
 base_data_dir = os.path.join(home, 'data')
 model_data_dir = os.path.join(base_data_dir, "tf/models")
-
+train_out_put_dir = os.path.join(base_data_dir, 'raw_feature/train')
+evaluate_out_put_dir = os.path.join(base_data_dir, 'raw_feature/evaluate')
+test_out_put_dir = os.path.join(base_data_dir, 'raw_feature/test')
 
 class InceptionResnetV2FeatureExtractor(object):
     """
@@ -93,11 +95,14 @@ def main(_):
     data_gen = load_images()
     for batch, batch_data in enumerate(data_gen):
         features = feature_extractor.get_features(images=batch_data)
-        print (features)
+
         print("batch={:4d}, batch_size={:4d}".format(batch, len(batch_data)))
         for idx, image_path in enumerate(batch_data):
+            img_id = get_img_id(image_path)
+            img_id_file = open(os.path.join(train_out_put_dir,img_id), "w")
+            img_id_file.writelines([features[idx]])
             print("\tidx={:4d}, image_id={:20}, feature_length={:4d}"
-                  .format(idx, get_img_id(image_path), len(features[idx])))
+                  .format(idx, img_id, len(features[idx])))
 
 
 if __name__ == '__main__':
