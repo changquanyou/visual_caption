@@ -17,6 +17,7 @@ from visual_caption.utils.decorator_utils import timeit
 slim = tf.contrib.slim
 from slim.nets.inception_resnet_v2 import inception_resnet_v2_arg_scope, inception_resnet_v2
 import json
+import numpy as np
 home = str(Path.home())  # home dir
 base_data_dir = os.path.join(home, 'data')
 model_data_dir = os.path.join(base_data_dir, "tf/models")
@@ -102,7 +103,7 @@ def main(_):
             loop_num += 1
             img_id = get_img_id(image_path)
             img_id_file = open(os.path.join(train_out_put_dir,img_id), "w")
-            img_id_file.writelines([features[idx]])
+            img_id_file.writelines([np.array_str(features[idx])])
             print("\tidx={:4d}, image_id={:20}, feature_length={:4d},loop_number={:4d}"
                   .format(idx, img_id, len(features[idx]),loop_num))
 
