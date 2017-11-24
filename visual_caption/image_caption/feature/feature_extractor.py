@@ -93,16 +93,18 @@ def get_img_id(img_path):
 def main(_):
     feature_extractor = InceptionResnetV2FeatureExtractor()
     data_gen = load_images()
+    loop_num = 0
     for batch, batch_data in enumerate(data_gen):
         features = feature_extractor.get_features(images=batch_data)
 
         print("batch={:4d}, batch_size={:4d}".format(batch, len(batch_data)))
         for idx, image_path in enumerate(batch_data):
+            loop_num += 1
             img_id = get_img_id(image_path)
             img_id_file = open(os.path.join(train_out_put_dir,img_id), "w")
             img_id_file.writelines([features[idx]])
-            print("\tidx={:4d}, image_id={:20}, feature_length={:4d}"
-                  .format(idx, img_id, len(features[idx])))
+            print("\tidx={:4d}, image_id={:20}, feature_length={:4d},loop_number={:4d}"
+                  .format(idx, img_id, len(features[idx]),loop_num))
 
 
 if __name__ == '__main__':
