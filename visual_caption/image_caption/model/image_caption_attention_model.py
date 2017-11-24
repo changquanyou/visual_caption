@@ -76,6 +76,7 @@ class ImageCaptionAttentionModel(BaseModel):
     def _build_embeddings(self):
         vocab_file = self.model_config.data_config.vocab_file
         embedding_size = self.model_config.data_config.embedding_size
+
         # Save the embedding size in the graph.
         tf.constant(embedding_size, name="embedding_size")
 
@@ -90,7 +91,19 @@ class ImageCaptionAttentionModel(BaseModel):
             seq_embeddings = tf.nn.embedding_lookup(self.seq_embedding_map, self.input_seqs)
         self.input_seq_embeddings = seq_embeddings
 
-        # Map image feature outputs into embedding space.
+        # for token begin batch embeddings
+        token_begin = self.model_config.data_config.token_begin
+        start_embedding = tf.nn.embedding_lookup(self.seq_embedding_map, token_begin)
+        self.start_seq_embeddings = tf.tile(input=start_embedding,
+                                            multiples=[self.batch_size, 1])
+
+        # for token end batch embeddings
+        token_end = self.model_config.data_config.token_end
+        end_embedding = tf.nn.embedding_lookup(self.seq_embedding_map, token_end)
+        self.end_seq_embeddings = tf.tile(input=end_embedding,
+                                          multiples=[self.batch_size, 1])
+
+        # Mapping image and region features into embedding space.
         with tf.variable_scope("image_embedding") as scope:
             image_embeddings = tf.contrib.layers.fully_connected(
                 inputs=self.input_images,
@@ -150,114 +163,128 @@ class ImageCaptionAttentionModel(BaseModel):
     @timeit
     @define_scope(scope_name="attention")
     def __build_attention(self):
-
         """
         attention based on RNN
-
         inputs: x(t) = [h_language(t-1):average(v):word(t)]
-
-            h_language(t-1)   : previous outputs of language RNN    ;
+            h_language(t-1)   : previous outputs of language RNN
             average(v)        : mean_pooled visual feature
             word(t)           : encoding of the generated word previously
-
-        output
-
-            h_attention(t)
-
+        outputs
+            attention_outputs
+            attend_visual_features
         """
-
-        average_v = tf.reduce_mean(self.input_regions,'mean_pooled_visual_feature')
-
-        attention_cell = self.__create_rnn_cell()
-        attention_inputs = None
+        average_region_features = tf.reduce_mean(self.input_regions,
+                                                 'mean_pooled_visual_feature')
+        attention_inputs = tf.concat([self.decoder_outputs, average_region_features],
+                                     axis=-1, name="attention_inputs")
         attention_state = None
-        attention_cell(inputs=attention_inputs,
-                       state=attention_state)
+        with tf.variable_scope("rnn_attention",
+                               initializer=self.initializer,
+                               reuse=tf.AUTO_REUSE) as rnn_attention_scope:
+            attention_cell_fw = self.__create_rnn_cell()
+            attention_cell_bw = self.__create_rnn_cell()
 
+        start_inputs = tf.concat([self.start_seq_embeddings, average_region_features],
+                                 axis=-1)
+        zero_state_fw = attention_cell_fw.zero_state(
+            batch_size=self.batch_size, dtype=tf.float32)
+        initial_outputs_fw, initial_state_fw = attention_cell_fw(start_inputs, zero_state_fw)
+
+        end_inputs = tf.concat([self.end_seq_embeddings, average_region_features], axis=-1)
+        zero_state_bw = attention_cell_bw.zero_state(
+            batch_size=self.batch_size, dtype=tf.float32)
+        initial_outputs_bw, initial_state_bw = attention_cell_fw(end_inputs, zero_state_bw)
+
+        if self.mode == ModeKeys.INFER:
+
+            attention_outputs_fw, attention_state_fw = attention_cell_fw(
+                inputs=attention_inputs, state=initial_state_fw)
+
+            attention_outputs_bw, attention_state_bw = attention_cell_bw(
+                inputs=attention_inputs, state=initial_state_bw)
+
+        else:
+            attention_outputs, attention_state = tf.nn.bidirectional_dynamic_rnn(
+                cell_fw=attention_cell_fw,
+                cell_bw=attention_cell_bw,
+                inputs=attention_inputs,
+                sequence_length=self.input_lengths,
+                initial_state_fw=initial_state_fw,
+                initial_state_bw=initial_state_bw,
+                dtype=self.model_config.data_type
+            )
+
+        with  tf.variable_scope("select") as attend_scope:
+            """
+            v_t(t) = sum(i)(1:k) (a(i,t)* v(i))
+                a(i,t) :  normalized attention weight for each region i at step t;
+                a(i,t) = [W(a)]' * tanh( W(v,a)*v(i) + W(h,a)*h_attention(t) )
+                W(v,a)  :   mapping visual feature, learned during training
+                weight_v_a  = tf.Variable(tf.random_normal([n_input, n_hidden_1])),
+                W(h,a)  :   mapping attention , learned during training
+                weight_h_a   = tf.Variable(tf.random_normal([n_input, n_hidden_1])),
+            """
+            # project visutal feature to attention space
+            weight_v_a = tf.Variable(tf.random_normal([num_attention_unit, dim_visual_feature]))
+            region_weights = tf.multiply(weight_v_a, self.input_regions)
+
+            # project language feature to attention space
+            weight_h_a = tf.Variable(tf.random_normal([num_attention_unit, dim_language_feature]))
+            language_weights = tf.multiply(weight_h_a, self.input_seq_embeddings)
+
+            weight_a = tf.Variable(tf.random_normal([num_attention_unit]))
+            # attention weights for all input regions
+            attentions = tf.multiply(weight_a, tf.tanh(tf.add(region_weights, language_weights)))
+
+            # attented visual features for regions
+            attend_visual_features = tf.reduce_sum(tf.multiply(attentions, self.input_regions))
+
+        self.attend_visual_features = attend_visual_features
+        self.attention_outputs = attention_outputs
         pass
 
     @timeit
     @define_scope(scope_name="decoder")
     def __build_decoder(self):
-
         """
         decoder is also the language generation model
-
         input (step t):
-
-            v_t(t) :            attended visual feature at step t
-
-            h_attention(t) :    output of attention model
-
-                v_t(t) = sum(i)(1:k) (a(i,t)* v(i))
-
-                    a(i,t) :  normalized attention weight for each region i at step t;
-
-                    a(i,t) = W(a) tanh( W(v,a)*v(i) + W(h,a)*h_attention(t) )
-
-                    W(v,a)  :   mapping visual feature, learned during training
-                    weight_v_a  = tf.Variable(tf.random_normal([n_input, n_hidden_1])),
-
-                    W(h,a)  :   mapping attention , learned during training
-                    weight_h_a   = tf.Variable(tf.random_normal([n_input, n_hidden_1])),
-
+        The input to the language model LSTM consists of
+            the attended image feature, concatenated with
+            the output of the attention LSTM,
+        input:
+            attend_visual_features  :   visual features of attend
+            attention_outputs       :   outputs of attention model
 
         output (t)
-
             h_language(t)
-
-        decode:
-            p(y(t)|y(1:t-1)) = softmax( W(p)* h_language(t)+b(p) )
-
         """
 
-        # put token begin as start state
-        token2index = self.data_reader._data_embedding.token2index
-        token_begin = self.model_config.data_config.token_begin
+        #  feature fusion, could update by
+        inputs = tf.concat([self.attend_visual_features, self.attention_outputs], axis=-1)
 
-        token_begin_ids = tf.fill([self.batch_size], token2index[token_begin])
-        token_begin_embeddings = tf.nn.embedding_lookup(params=self.seq_embedding_map,
-                                                        ids=token_begin_ids)
-        start_embeddings = self.__get_input_embeddings(
-            seq_embeddings=token_begin_embeddings,
-            image_embeddings=self.image_embeddings
-        )
-
-        # create inputs for rnn_cell
-        inputs = self.__get_input_embeddings(
-            seq_embeddings=self.input_seq_embeddings,
-            image_embeddings=self.image_embeddings)
-
-        with tf.variable_scope("rnn_decoder",
+        batch_size = self.batch_size
+        data_type = self.data_type
+        with tf.variable_scope("language_model",
                                initializer=self.initializer,
                                reuse=tf.AUTO_REUSE) as rnn_scope:
+
             cell_fw = self.__create_rnn_cell()
             cell_bw = self.__create_rnn_cell()
-            # Feed the image embeddings to set the initial rnn_cell state.
-            zero_state_fw = cell_fw.zero_state(batch_size=self.batch_size, dtype=tf.float32)
-            _, initial_state_fw = cell_fw(start_embeddings, zero_state_fw)
-            zero_state_bw = cell_bw.zero_state(batch_size=self.batch_size, dtype=tf.float32)
-            _, initial_state_bw = cell_bw(start_embeddings, zero_state_bw)
+
+        zero_state_fw = cell_fw.zero_state(batch_size, data_type)
+        zero_state_bw = cell_bw.zero_state(batch_size, data_type)
+
+        initial_outputs, initial_state_fw = cell_fw(inputs, zero_state_fw)
+        initial_outputs, initial_state_bw = cell_bw(inputs, zero_state_bw)
+
+        # Feed the image embeddings to set the initial rnn_cell state.
 
         if self.mode == ModeKeys.INFER:
-            # In inference mode, use concatenated states for convenient feeding and
-            # fetching.
-            self.initial_states = tf.concat(
-                tf.concat([initial_state_fw, initial_state_bw], axis=-1),
-                axis=1, name="initial_state")
-            # Placeholder for feeding a batch of concatenated states.
             self.state_feeds = tf.placeholder(shape=[None, cell_fw.state_size + cell_bw.state_size],
                                               name="state_feed", dtype=tf.float32)
             state_tuple_fw, state_tuple_bw = tf.split(value=self.state_feeds,
                                                       num_or_size_splits=2, axis=1)
-
-            input_embeddings = self.__get_input_embeddings(
-                seq_embeddings=token_begin_embeddings,
-                image_embeddings=self.image_embeddings
-            )
-
-            inputs_fw = tf.squeeze(input_embeddings, axis=[1], name="input_fw")
-            inputs_bw = tf.squeeze(input_embeddings, axis=[1], name="input_bw")
 
             # Run a single step.
             outputs_fw, state_tuple_new_fw = cell_fw(inputs=inputs_fw, state=state_tuple_fw)
@@ -278,15 +305,16 @@ class ImageCaptionAttentionModel(BaseModel):
                 dtype=data_type,
                 scope=rnn_scope)
 
-        self.outputs = tf.concat(outputs, -1)
+        self.decoder_outputs = tf.concat(outputs, -1)
         self.final_states = tf.concat(final_states, -1)
         pass
 
     @timeit
-    @define_scope(scope_name="losses")
     def _build_loss(self):
         # Compute logits and weights
         vocab_size = self.vocab_table.size()
+
+        self.outputs = self.decoder_outputs
         with tf.variable_scope("logits") as logits_scope:
             logits = tf.contrib.layers.fully_connected(
                 inputs=self.outputs,
@@ -296,33 +324,42 @@ class ImageCaptionAttentionModel(BaseModel):
                 scope=logits_scope)
 
         self.predictions = tf.cast(tf.argmax(logits, axis=-1), tf.int32)
-
         if self.mode == ModeKeys.INFER:
             self.softmax = tf.nn.softmax(logits, name="softmax")
         else:
             weights = tf.sequence_mask(lengths=self.target_lengths,
                                        dtype=self.outputs.dtype,
                                        name='masks')
-            batch_loss = seq2seq.sequence_loss(logits=logits,
-                                               targets=self.target_seqs,
-                                               weights=weights)
-            self.loss = batch_loss
-            tf.losses.add_loss(batch_loss)
-            total_loss = tf.losses.get_total_loss()
-            # Add summaries.
-            tf.summary.scalar("losses/batch_loss", batch_loss)
-            tf.summary.scalar("losses/total_loss", total_loss)
-            self.total_loss = total_loss
-            self.target_cross_entropy_losses = batch_loss  # Used in evaluation.
-            self.target_cross_entropy_loss_weights = weights  # Used in evaluation.
+            with tf.variable_scope("losses"):
+                batch_loss = seq2seq.sequence_loss(
+                    logits=logits,
+                    targets=self.target_seqs,
+                    weights=weights)
+                self.loss = batch_loss
+                tf.losses.add_loss(batch_loss)
+                total_loss = tf.losses.get_total_loss()
+                # Add summaries.
+                tf.summary.scalar("batch_loss", batch_loss)
+                tf.summary.scalar("total_loss", total_loss)
+                self.total_loss = total_loss
+                self.target_cross_entropy_losses = batch_loss  # Used in evaluation.
+                self.target_cross_entropy_loss_weights = weights  # Used in evaluation.
 
-            correct_prediction = tf.equal(self.predictions, self.target_seqs)
-            batch_accuracy = tf.div(tf.reduce_sum(
-                tf.multiply(tf.cast(correct_prediction, tf.float32), weights)),
-                tf.reduce_sum(weights), name="batch_accuracy")
-            self.accuracy = batch_accuracy
-            tf.summary.scalar("accuracy", self.accuracy)
+            with tf.variable_scope("accuracy"):
+                correct_prediction = tf.equal(self.predictions, self.target_seqs)
+                batch_accuracy = tf.div(tf.reduce_sum(
+                    tf.multiply(tf.cast(correct_prediction, tf.float32), weights)),
+                    tf.reduce_sum(weights), name="batch_accuracy")
+                self.accuracy = batch_accuracy
+                tf.summary.scalar("accuracy", self.accuracy)
 
     @timeit
     def _decode(self):
+
+        """
+        decode:
+            p(y(t)|y(1:t-1)) = softmax( W(p)* h_language(t)+b(p) )
+        :return:
+        """
+
         assert self.mode == ModeKeys.INFER
