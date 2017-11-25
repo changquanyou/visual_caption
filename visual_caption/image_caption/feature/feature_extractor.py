@@ -105,7 +105,7 @@ def main(_):
             img_id = get_img_id(image_path)
             img_id_file = open(os.path.join(train_out_put_dir,img_id), "w")
             #np.savetxt(os.path.join(train_out_put_dir,img_id), features[idx].view(float))
-            img_id_file.writelines(features[idx].tolist())
+            img_id_file.writelines([str(features[idx].tolist())])
             img_id_file.close()
             print("\tidx={:4d}, image_id={:20}, feature_length={:4d},loop_number={:4d},feature_size={:10d}"
                   .format(idx, img_id, len(features[idx]),loop_num,features[idx].size))
