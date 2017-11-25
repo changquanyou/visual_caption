@@ -134,11 +134,11 @@ class FasterRCNNDetector(object):
         return results
 
 
-def load_images():
+def load_images(current_path):
     data_config = ImageCaptionDataConfig()
     batch_size = 40
     image_files = list()
-    for file_path in Path(data_config.train_image_dir).glob('**/*'):
+    for file_path in Path(current_path).glob('**/*'):
         image_files.append(file_path.absolute())
         if len(image_files) == batch_size:
             yield image_files
@@ -161,31 +161,33 @@ def load_image_into_numpy_array(image):
 def main(_):
     config = DetectorConfig()
     detector = FasterRCNNDetector(config=config)
-    image_gen = load_images()
-    loop_num = 0
-    for batch, batch_images in enumerate(image_gen):
-        for idx, image_path in enumerate(batch_images):
-            results = detector.detect_image(image_path=image_path)
-            img_id = get_img_id(str(image_path))
-            index_flag = 0
-            result_list = []
-            img_id_file = open(os.path.join(train_out_put_dir,img_id), "w")
-            loop_num += 1
-            print('current fetch img feature ,loop number:{}'.format(loop_num))
-            for idx, data_dict in enumerate(results):
-                if(index_flag == TOP_NUMBER_THRESHOLD):
-                    break
-                index_flag += 1
-                data_dict['confidence_score'] = float(str(data_dict['confidence_score']))
-                data_dict['class_id']=int(str(data_dict['class_id']))
-                data_dict['bbox']=str(data_dict['bbox'])
+    data_config = ImageCaptionDataConfig()
+    for current_path in [data_config.test_image_dir,data_config.train_data_dir,data_config.valid_image_dir]:
+        image_gen = load_images(current_path)
+        loop_num = 0
+        for batch, batch_images in enumerate(image_gen):
+            for idx, image_path in enumerate(batch_images):
+                results = detector.detect_image(image_path=image_path)
+                img_id = get_img_id(str(image_path))
+                index_flag = 0
+                result_list = []
+                img_id_file = open(os.path.join(train_out_put_dir,img_id), "w")
+                loop_num += 1
+                print('current fetch img feature ,loop number:{},current path:{}'.format(loop_num,current_path))
+                for idx, data_dict in enumerate(results):
+                    if(index_flag == TOP_NUMBER_THRESHOLD):
+                        break
+                    index_flag += 1
+                    data_dict['confidence_score'] = float(str(data_dict['confidence_score']))
+                    data_dict['class_id']=int(str(data_dict['class_id']))
+                    data_dict['bbox']=str(data_dict['bbox'])
                 #img_id_file.write("\n".join(json.dumps(data_dict)))
-                result_list.append(json.dumps(data_dict)+"\n")
+                    result_list.append(json.dumps(data_dict)+"\n")
                 #print("confidence_score={:.8f}, class_id={:2d}, class_name={:16}, bbox={}"
                 #  .format(data_dict["confidence_score"], data_dict["class_id"],
                 #          data_dict["class_name"], data_dict["bbox"]))
-            img_id_file.writelines(result_list)
-            img_id_file.close() 
+                img_id_file.writelines(result_list)
+                img_id_file.close()
 
 if __name__ == '__main__':
     tf.app.run()
