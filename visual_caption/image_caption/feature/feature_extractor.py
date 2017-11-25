@@ -43,7 +43,9 @@ class FeatureExtractor(object):
     """
 
     def __init__(self, sess=None):
-        self.input_images = tf.placeholder(tf.float32, shape=(None, 299, 299, 3), name='input_images')
+        self.input_images = tf.placeholder(tf.float32,
+                                           shape=(None, 299, 299, 3),
+                                           name='input_images')
         if sess is None:
             gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=0.6)
             sess_config = tf.ConfigProto(gpu_options=gpu_options,
@@ -61,7 +63,8 @@ class FeatureExtractor(object):
         scaled_input_tensor = tf.multiply(scaled_input_tensor, 2.0)
         arg_scope = inception_resnet_v2_arg_scope()
         with slim.arg_scope(arg_scope):
-            logits, end_points = inception_resnet_v2(scaled_input_tensor, is_training=False)
+            logits, end_points = inception_resnet_v2(
+                scaled_input_tensor, is_training=False)
         saver = tf.train.Saver()
         checkpoint_file = inception_resnet_v2_ckpt
         saver.restore(self.sess, checkpoint_file)
