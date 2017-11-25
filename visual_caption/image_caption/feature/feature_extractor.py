@@ -73,11 +73,10 @@ class InceptionResnetV2FeatureExtractor(object):
         return results
 
 
-def load_images():
-    data_config = ImageCaptionDataConfig()
+def load_images(img_path):
     batch_size = 101
     image_files = list()
-    for file_path in Path(data_config.test_image_dir).glob('**/*'):
+    for file_path in Path(img_path).glob('**/*'):
         image_files.append(file_path.absolute())
         if len(image_files) == batch_size:
             yield image_files
@@ -90,23 +89,23 @@ def get_img_id(img_path):
     arrays = str(img_path).split('/')
     return arrays[len(arrays) - 1].split('.')[0]
 
-
+#https://stackoverflow.com/questions/6494102/how-to-save-and-load-an-array-of-complex-numbers-using-numpy-savetxt
 def main(_):
-    feature_extractor = InceptionResnetV2FeatureExtractor()
-    data_gen = load_images()
-    loop_num = 0
-    for batch, batch_data in enumerate(data_gen):
-        features = feature_extractor.get_features(images=batch_data)
-
-        print("batch={:4d}, batch_size={:4d}".format(batch, len(batch_data)))
-        for idx, image_path in enumerate(batch_data):
-            loop_num += 1
-            img_id = get_img_id(image_path)
-            img_id_file = open(os.path.join(train_out_put_dir,img_id), "w")
-            img_id_file.writelines([np.array_str(features[idx])])
-            print("\tidx={:4d}, image_id={:20}, feature_length={:4d},loop_number={:4d}"
-                  .format(idx, img_id, len(features[idx]),loop_num))
-
-
+    data_config = ImageCaptionDataConfig()
+    for current_path in [data_config.test_image_dir,data_config.train_data_dir,data_config.valid_image_dir]:
+        feature_extractor = InceptionResnetV2FeatureExtractor()
+        data_gen = load_images(current_path)
+        loop_num = 0
+        for batch, batch_data in enumerate(data_gen):
+            features = feature_extractor.get_features(images=batch_data)
+            print("batch={:4d}, batch_size={:4d},current_path={:100}".format(batch, len(batch_data),current_path))
+            for idx, image_path in enumerate(batch_data):
+                loop_num += 1
+                img_id = get_img_id(image_path)
+                img_id_file = open(os.path.join(train_out_put_dir,img_id), "w")
+                img_id_file.writelines([str(features[idx].tolist())])
+                img_id_file.close()
+                print("\tidx={:4d}, image_id={:20}, feature_length={:4d},loop_number={:4d},feature_size={:10d}"
+                      .format(idx, img_id, len(features[idx]),loop_num,features[idx].size))
 if __name__ == '__main__':
     tf.app.run()
