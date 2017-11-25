@@ -3,46 +3,49 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 from __future__ import unicode_literals  # compatible with python3 unicode coding
-import sys
+
 import os
 from pathlib import Path
 
 import tensorflow as tf
+from scipy.misc import imresize
 from sklearn.preprocessing import normalize
-sys.path.append('../../../')
-from visual_caption.image_caption.data.data_config import ImageCaptionDataConfig
-from visual_caption.utils import image_utils
-from visual_caption.utils.decorator_utils import timeit
+
+from tf_visgen.utils import image_utils
+from tf_visgen.utils.decorator_utils import timeit
+from tf_visgen.visgen.data.data_config import VisualGenomeDataConfig
 
 slim = tf.contrib.slim
 from slim.nets.inception_resnet_v2 import inception_resnet_v2_arg_scope, inception_resnet_v2
-import json
-import numpy as np
+
 home = str(Path.home())  # home dir
 base_data_dir = os.path.join(home, 'data')
 model_data_dir = os.path.join(base_data_dir, "tf/models")
-train_out_put_dir = os.path.join(base_data_dir, 'raw_feature/train')
-evaluate_out_put_dir = os.path.join(base_data_dir, 'raw_feature/evaluate')
-test_out_put_dir = os.path.join(base_data_dir, 'raw_feature/test')
+inception_resnet_v2_ckpt = os.path.join(model_data_dir, "inception_resnet_v2_2016_08_30.ckpt")
 
-class InceptionResnetV2FeatureExtractor(object):
+batch_size = 40
+
+
+def load_images(image_files):
+    raw_images = list()
+    for idx, image_path in enumerate(image_files):
+        image_rawdata = image_utils.load_image(image_path=image_path)
+        if image_rawdata is not None:
+            image_rawdata = imresize(image_rawdata, (299, 299, 3))
+            raw_images.append(image_rawdata)
+    return raw_images
+
+
+class FeatureExtractor(object):
     """
-    inception_resnet_v2 feature extractor
-
-        input batched image_paths
-        output features for input image_paths
-
+    inception_resnet_v2 Feature Extractor
 
     """
 
     def __init__(self, sess=None):
-
-        self.inception_resnet_v2_ckpt = os.path.join(
-            model_data_dir, "inception_resnet_v2_2016_08_30.ckpt")
-        self.input_images = tf.placeholder(shape=[None, 299, 299, 3],
-                                           dtype=tf.float32, name='input_images')
+        self.input_images = tf.placeholder(tf.float32, shape=(None, 299, 299, 3), name='input_images')
         if sess is None:
-            gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=0.8)
+            gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=0.6)
             sess_config = tf.ConfigProto(gpu_options=gpu_options,
                                          allow_soft_placement=True,
                                          log_device_placement=False)
@@ -60,23 +63,56 @@ class InceptionResnetV2FeatureExtractor(object):
         with slim.arg_scope(arg_scope):
             logits, end_points = inception_resnet_v2(scaled_input_tensor, is_training=False)
         saver = tf.train.Saver()
-        checkpoint_file = self.inception_resnet_v2_ckpt
+        checkpoint_file = inception_resnet_v2_ckpt
         saver.restore(self.sess, checkpoint_file)
         self.fetches = [end_points['PreLogitsFlatten'], logits]
 
-    def get_features(self, images):
-        raw_images = image_utils.load_images(images)
+    def get_features(self, image_files):
+        raw_images = load_images(image_files)
         feed_dict = {self.input_images: raw_images}
         predict_values, logit_values = self.sess.run(self.fetches,
                                                      feed_dict)
         results = normalize(predict_values)
         return results
 
+    def get_feature(self, image_path):
+        image_files = [image_path]
+        features = self.get_features(image_files)
+        return features[0]
 
-def load_images(img_path):
-    batch_size = 101
+    def get_feature_from_rawdata(self, image_raw_data):
+        image_rawdata_list = [image_raw_data]
+        return self.get_feature_from_rawdata_list(image_rawdata_list)[0]
+
+    def get_feature_from_rawdata_list(self, image_rawdata_list):
+        raw_image_datas = list()
+        results = list()
+        for image_rawdata in image_rawdata_list:
+            image_rawdata = imresize(image_rawdata, (299, 299, 3))
+            raw_image_datas.append(image_rawdata)
+
+            if len(raw_image_datas) == batch_size:
+                feed_dict = {self.input_images: raw_image_datas}
+                predict_values, logit_values = self.sess.run(
+                    self.fetches, feed_dict)
+                results.extend(normalize(predict_values))
+                raw_image_datas = list()
+
+        if len(raw_image_datas) > 0:
+            feed_dict = {self.input_images: raw_image_datas}
+            predict_values, logit_values = self.sess.run(
+                self.fetches, feed_dict)
+            results.extend(normalize(predict_values))
+
+        del raw_image_datas
+
+        return results
+
+
+def load_genome():
+    data_config = VisualGenomeDataConfig()
     image_files = list()
-    for file_path in Path(img_path).glob('**/*'):
+    for file_path in Path(data_config.image_dir).glob('**/*'):
         image_files.append(file_path.absolute())
         if len(image_files) == batch_size:
             yield image_files
@@ -85,27 +121,13 @@ def load_images(img_path):
         yield image_files
 
 
-def get_img_id(img_path):
-    arrays = str(img_path).split('/')
-    return arrays[len(arrays) - 1].split('.')[0]
-
-#https://stackoverflow.com/questions/6494102/how-to-save-and-load-an-array-of-complex-numbers-using-numpy-savetxt
 def main(_):
-    data_config = ImageCaptionDataConfig()
-    for current_path in [data_config.test_image_dir,data_config.train_data_dir,data_config.valid_image_dir]:
-        feature_extractor = InceptionResnetV2FeatureExtractor()
-        data_gen = load_images(current_path)
-        loop_num = 0
-        for batch, batch_data in enumerate(data_gen):
-            features = feature_extractor.get_features(images=batch_data)
-            print("batch={:4d}, batch_size={:4d},current_path={:100}".format(batch, len(batch_data),current_path))
-            for idx, image_path in enumerate(batch_data):
-                loop_num += 1
-                img_id = get_img_id(image_path)
-                img_id_file = open(os.path.join(train_out_put_dir,img_id), "w")
-                img_id_file.writelines([str(features[idx].tolist())])
-                img_id_file.close()
-                print("\tidx={:4d}, image_id={:20}, feature_length={:4d},loop_number={:4d},feature_size={:10d}"
-                      .format(idx, img_id, len(features[idx]),loop_num,features[idx].size))
+    feature_extractor = FeatureExtractor()
+    data_gen = load_genome()
+    for batch, batch_images in enumerate(data_gen):
+        features = feature_extractor.get_features(batch_images)
+        print(features.shape)
+
+
 if __name__ == '__main__':
     tf.app.run()
