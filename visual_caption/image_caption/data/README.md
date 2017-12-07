@@ -5,6 +5,9 @@
     load raw data 
     generate and load embeddings
 
+## data_detector
+    detect the regions for each image which is loaded by data_loader
+    
 ## data_builder
     build raw data to tfrecord
 

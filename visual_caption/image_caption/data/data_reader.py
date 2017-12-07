@@ -56,8 +56,10 @@ class ImageCaptionDataReader(BaseDataReader):
         dataset = dataset.map(
             lambda image_id, image_feature, caption: (
                 image_id, image_feature,
-                tf.concat(([token_begin], caption), axis=0),  # modify phase to begin_token  +  phrase
-                tf.concat((caption, [token_end]), axis=0)  # create target = phrase + end_token
+                tf.concat(([token_begin], caption), axis=0),
+                # modify phase to begin_token  +  phrase
+                tf.concat((caption, [token_end]), axis=0)
+                # create target = phrase + end_token
             ),
             num_parallel_calls=num_threads)
 
@@ -124,16 +126,12 @@ class ImageCaptionDataReader(BaseDataReader):
         data = (image_id, image_feature, caption)
         return data
 
-class ImageCaptionAttentionDataReader(BaseDataReader):
-    def __init__(self,data_config):
-        super(ImageCaptionAttentionDataReader,self).__init__(
-            data_config = data_config
-        )
-        vocab_char_file = self._data_config.vocab_char_file
-        dictionary = corpora.Dictionary().load_from_text(vocab_char_file)
-        self.index2token = dictionary.id2token
-        self.token2index = dictionary.token2id
-    pass
+
+
+
+
+
+
 
 def main(_):
     """
