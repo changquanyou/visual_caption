@@ -17,7 +17,11 @@ from visual_caption.image_caption.model.image_caption_attention_model import Ima
 from visual_caption.image_caption.model.image_caption_config import ImageCaptionConfig
 from visual_caption.utils.decorator_utils import timeit
 
+
 class ImageCaptionAttentionRunner(BaseRunner):
+    """Image Caption Attention Model Runner
+    """
+
     def __init__(self):
         super(ImageCaptionAttentionRunner, self).__init__()
 
@@ -38,8 +42,8 @@ class ImageCaptionAttentionRunner(BaseRunner):
     @timeit
     def train(self):
         model = ImageCaptionAttentionModel(model_config=self.model_config,
-                                      data_reader=self.data_reader,
-                                      mode=ModeKeys.TRAIN)
+                                           data_reader=self.data_reader,
+                                           mode=ModeKeys.TRAIN)
         fetches = [model.summary_merged, model.loss, model.accuracy, model.train_op,
                    model.image_ids, model.input_seqs, model.target_seqs, model.predictions]
 
@@ -120,6 +124,18 @@ class ImageCaptionAttentionRunner(BaseRunner):
         pass
         # validation with current (such as training) session on validation data set
 
+    def eval(self):
+        pass
+
+    def _internal_eval(self, model, sess):
+        pass
+
+    def infer(self):
+        """
+        infer caption text based on image_feature and region_features for given image
+        :return:
+        """
+        pass
 
 
 def main(_):
