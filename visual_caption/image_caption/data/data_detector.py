@@ -10,19 +10,19 @@ import time
 
 import tensorflow as tf
 
-from tf_visgen.mscoco.data.mscoco_data_config import MSCOCODataConfig
-from tf_visgen.mscoco.data.mscoco_data_loader import MSCOCODataLoader
-from tf_visgen.utils.decorator_utils import timeit
-from tf_visgen.visgen.feature.faster_rcnn_detector import FasterRCNNDetector, DetectorConfig
+from visual_caption.image_caption.data.data_config import ImageCaptionDataConfig
+from visual_caption.image_caption.data.data_loader import ImageCaptionDataLoader
+from visual_caption.utils.decorator_utils import timeit
+from visual_caption.image_caption.feature.faster_rcnn_detector import FasterRCNNDetector, DetectorConfig
 
 detector_config = DetectorConfig()
 faster_rcnn_detector = FasterRCNNDetector(detector_config)
 
 
 def get_image_id(image_filepath):
-    idx_start =  image_filepath.rfind('_')
-    idx_end  = image_filepath.rfind('.')
-    id_string = image_filepath[idx_start+1:idx_end]
+    idx_start = image_filepath.rfind('_')
+    idx_end = image_filepath.rfind('.')
+    id_string = image_filepath[idx_start + 1:idx_end]
     image_id = int(id_string)
     return image_id
 
@@ -38,12 +38,12 @@ class ImageCaptionDataDetector(object):
 
     def __init__(self, data_config):
         self.data_config = data_config
-        self.data_loader = MSCOCODataLoader()
+        self.data_loader = ImageCaptionDataLoader()
         self.detector = faster_rcnn_detector
 
     @timeit
     def build_bbox_data(self, caption_file, image_dir, target_file):
-        metadata = self.data_loader.load_metadata(
+        metadata = self.data_loader.load_data(
             captions_file=caption_file, image_dir=image_dir)
         # convert metadata of each image to bbox record
         image_list = list()  # batch data for images
@@ -125,8 +125,8 @@ class ImageCaptionDataDetector(object):
 
 
 def main(_):
-    data_config = MSCOCODataConfig()
-    data_detector = COCODataDetector(data_config)
+    data_config = ImageCaptionDataConfig()
+    data_detector = ImageCaptionDataDetector(data_config)
     data_detector.build_all_bbox()
 
 
