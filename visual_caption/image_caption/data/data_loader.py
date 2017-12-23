@@ -26,7 +26,7 @@ class ImageCaptionDataLoader(BaseDataLoader):
     """
 
     def __init__(self, data_config=default_data_config):
-        super(ImageCaptionDataLoader,self).__init__(data_config=data_config)
+        super(ImageCaptionDataLoader, self).__init__(data_config=data_config)
         # self.load_embeddings()
 
     def load_raw_generator(self, json_data_file, image_dir):
@@ -57,11 +57,8 @@ class ImageCaptionDataLoader(BaseDataLoader):
                     caption_list.append(caption_txt)
 
                 caption_data = {
-                    'id': id,
-                    'url': url,
-                    'image_id': image_id,
-                    'image_file': image_file,
-                    'captions': caption_list
+                    'id': id, 'url': url, 'image_id': image_id,
+                    'image_file': image_file, 'captions': caption_list
                 }
                 batch_data.append(caption_data)
 
@@ -93,6 +90,7 @@ class ImageCaptionDataLoader(BaseDataLoader):
 def main(_):
     data_loader = ImageCaptionDataLoader()
     # data_loader.build_char_all()
+
 
 if __name__ == '__main__':
     tf.app.run()

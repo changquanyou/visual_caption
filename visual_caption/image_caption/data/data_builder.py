@@ -17,28 +17,10 @@ from visual_caption.image_caption.data.data_utils import ImageCaptionDataUtils
 from visual_caption.image_caption.feature.feature_extractor import FeatureExtractor
 from visual_caption.image_caption.feature.vgg_feature_manager import FeatureManager
 
-
-class ImageDecoder(object):
-    """Helper class for decoding images in TensorFlow."""
-
-    def __init__(self):
-        # Create a single TensorFlow Session for all image decoding calls.
-        self._sess = tf.Session()
-        # TensorFlow ops for JPEG decoding.
-        self._encoded_jpeg = tf.placeholder(dtype=tf.string)
-        self._decode_jpeg = tf.image.decode_jpeg(self._encoded_jpeg, channels=3)
-
-    def decode_jpeg(self, encoded_jpeg):
-        image = self._sess.run(self._decode_jpeg,
-                               feed_dict={self._encoded_jpeg: encoded_jpeg})
-        assert len(image.shape) == 3
-        assert image.shape[2] == 3
-        return image
-
 class ImageCaptionDataBuilder(BaseDataBuilder):
     """
-    Data Building:
-        Data Builder of train, test and validation with tfrecord format
+        Data Building:
+        build train, test and validation dataset according with tfrecord format
     """
 
     def __init__(self, data_config):
@@ -46,8 +28,6 @@ class ImageCaptionDataBuilder(BaseDataBuilder):
             data_config=data_config)
         self.data_loader = ImageCaptionDataLoader()
         self.data_utils = ImageCaptionDataUtils()
-        self.image_decoder = ImageDecoder()
-        # self.feature_manager = FeatureManager()
         self.feature_extractor = FeatureExtractor()
 
     def _build_tfrecords(self, image_dir, data_gen, output_file):
@@ -100,8 +80,8 @@ class ImageCaptionDataBuilder(BaseDataBuilder):
         for idx, caption_data in enumerate(batch_caption_data):  # for each caption meta data
             visual_feature = visual_features[idx]  #
             # get list of sequence examples for each caption_data
-            example_list = self._to_sequence_example(visual_feature=visual_feature,
-                                                     caption_data=caption_data)
+            example_list = self._to_sequence_example(
+                visual_feature=visual_feature, caption_data=caption_data)
             sequence_example_list.extend(example_list)
         return sequence_example_list
 
@@ -139,13 +119,14 @@ class ImageCaptionDataBuilder(BaseDataBuilder):
             caption = str.strip(caption)
             if len(caption) > 0:
                 caption_encoded = [char.encode() for char in caption]
-                feature_lists = tf.train.FeatureLists(feature_list={
-                    self.data_config.caption_text_name:
-                        self._bytes_feature_list(caption_encoded),
-                })
+                feature_lists = tf.train.FeatureLists(
+                    feature_list={
+                        self.data_config.caption_text_name:
+                            self._bytes_feature_list(caption_encoded),
+                    })
 
-                sequence_example = tf.train.SequenceExample(context=context,
-                                                            feature_lists=feature_lists)
+                sequence_example = tf.train.SequenceExample(
+                    context=context, feature_lists=feature_lists)
                 sequence_example_list.append(sequence_example)
 
         # assert len(sequence_example_list) == 5
@@ -179,9 +160,6 @@ class ImageCaptionDataBuilder(BaseDataBuilder):
                               output_file=output_file)
         pass
 
-class ImageCaptionFasterRCNNDataBuild(ImageCaptionDataBuilder):
-    pass
-
 
 def main(_):
     data_config = ImageCaptionDataConfig()
@@ -190,7 +168,6 @@ def main(_):
     # data_builder.build_train_data()
     data_builder.build_valid_data()
     data_builder.build_test_data()
-
 
 
 if __name__ == '__main__':
