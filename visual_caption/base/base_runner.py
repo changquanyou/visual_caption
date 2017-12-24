@@ -28,7 +28,7 @@ class BaseRunner(object):
 
     @timeit
     @abstractmethod
-    def valid(self):
+    def eval(self):
         raise NotImplementedError()
         pass
 

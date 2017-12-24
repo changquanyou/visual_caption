@@ -14,10 +14,10 @@ class BaseDataReader(object):
     __metaclass__ = ABCMeta
 
     def __init__(self, data_config):
-        self._data_config = data_config
+        self.data_config = data_config
 
         # default batch_size from data reader config
-        self._batch_size = self._data_config.reader_batch_size
+        self._batch_size = self.data_config.reader_batch_size
         self._build_context_and_feature()
         self.data_iterator = self.get_data_iterator()
         pass
@@ -27,7 +27,7 @@ class BaseDataReader(object):
         get a data iterator for all dataset including train,valid and test
         :return:
         """
-        dataset = self._get_dataset(self._data_config.train_data_dir)
+        dataset = self._get_dataset(self.data_config.train_data_dir)
         data_iterator = tf.data.Iterator.from_structure(
             output_types=dataset.output_types,
             output_shapes=dataset.output_shapes
@@ -41,20 +41,20 @@ class BaseDataReader(object):
         return next_batch
 
     def get_train_init_op(self):
-        print("train_data_dir={}".format(self._data_config.train_data_dir))
-        _train_dataset = self._get_dataset(data_dir=self._data_config.train_data_dir)
+        print("train_data_dir={}".format(self.data_config.train_data_dir))
+        _train_dataset = self._get_dataset(data_dir=self.data_config.train_data_dir)
         initializer = self.data_iterator.make_initializer(_train_dataset)
         return initializer
 
     def get_valid_init_op(self):
-        print("valid_data_dir={}".format(self._data_config.valid_data_dir))
-        _valid_dataset = self._get_dataset(data_dir=self._data_config.valid_data_dir)
+        print("valid_data_dir={}".format(self.data_config.valid_data_dir))
+        _valid_dataset = self._get_dataset(data_dir=self.data_config.valid_data_dir)
         initializer = self.data_iterator.make_initializer(_valid_dataset)
         return initializer
 
     def get_test_init_op(self):
-        print("test_data_dir={}".format(self._data_config.test_data_dir))
-        _test_dataset = self._get_dataset(data_dir=self._data_config.test_data_dir)
+        print("test_data_dir={}".format(self.data_config.test_data_dir))
+        _test_dataset = self._get_dataset(data_dir=self.data_config.test_data_dir)
         initializer = self.data_iterator.make_initializer(_test_dataset)
         return initializer
 
