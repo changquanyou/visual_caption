@@ -43,20 +43,18 @@ class ImageCaptionDataEmbedding(object):
                         if len(str.strip(caption)) > 0:
                             line = [char + ' ' for char in caption]
                             # separate each token with a whitespace
-                            line.insert(0, self.data_config.token_begin + " ")
+                            line.insert(0, self.data_config.token_start + " ")
                             line.append(self.data_config.token_end)
                             line.append('\n')
                             f_txt.writelines(line)
                 if batch % 1000 == 0:
                     print("Generating caption char txt for batch={}".format(batch * 1000))
             print("end char txt generation for {}".format(json_data_file))
-
         pass
-
 
     def build_char_all(self):
         """
-        generate char txt file
+            generate　Chinese chars txt file for the train and valid dataset
             Each sentence in test and train data is tokenized to Chinese char in per line.
         :return:
         """

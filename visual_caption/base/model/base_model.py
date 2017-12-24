@@ -32,7 +32,7 @@ class BaseModel(object):
         self.summary_writer = tf.summary.FileWriter(
             logdir=self.model_config.log_train_dir)
         self.summary_eval_writer = tf.summary.FileWriter(
-            logdir=self.model_config.log_validation_dir)
+            logdir=self.model_config.log_valid_dir)
         self.summary_test_writer = tf.summary.FileWriter(
             logdir=self.model_config.log_test_dir)
 

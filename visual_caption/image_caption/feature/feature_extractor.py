@@ -11,9 +11,8 @@ import tensorflow as tf
 from scipy.misc import imresize
 from sklearn.preprocessing import normalize
 
-from tf_visgen.utils import image_utils
-from tf_visgen.utils.decorator_utils import timeit
-from tf_visgen.visgen.data.data_config import VisualGenomeDataConfig
+from visual_caption.utils import image_utils
+from visual_caption.utils.decorator_utils import timeit
 
 slim = tf.contrib.slim
 from slim.nets.inception_resnet_v2 import inception_resnet_v2_arg_scope, inception_resnet_v2
@@ -39,18 +38,20 @@ def load_images(image_files):
 class FeatureExtractor(object):
     """
     inception_resnet_v2 Feature Extractor
-
     """
 
     def __init__(self, sess=None):
-        self.input_images = tf.placeholder(tf.float32,
-                                           shape=(None, 299, 299, 3),
-                                           name='input_images')
+        self.input_images = tf.placeholder(
+            tf.float32,
+            shape=(None, 299, 299, 3),
+            name='input_images')
         if sess is None:
-            gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=0.6)
-            sess_config = tf.ConfigProto(gpu_options=gpu_options,
-                                         allow_soft_placement=True,
-                                         log_device_placement=False)
+            gpu_options = tf.GPUOptions(
+                per_process_gpu_memory_fraction=0.6)
+            sess_config = tf.ConfigProto(
+                gpu_options=gpu_options,
+                allow_soft_placement=True,
+                log_device_placement=False)
             self.sess = tf.Session(config=sess_config)
         else:
             self.sess = sess
@@ -73,8 +74,8 @@ class FeatureExtractor(object):
     def get_features(self, image_files):
         raw_images = load_images(image_files)
         feed_dict = {self.input_images: raw_images}
-        predict_values, logit_values = self.sess.run(self.fetches,
-                                                     feed_dict)
+        predict_values, logit_values = self.sess.run(
+            self.fetches, feed_dict)
         results = normalize(predict_values)
         return results
 
@@ -110,27 +111,3 @@ class FeatureExtractor(object):
         del raw_image_datas
 
         return results
-
-
-def load_genome():
-    data_config = VisualGenomeDataConfig()
-    image_files = list()
-    for file_path in Path(data_config.image_dir).glob('**/*'):
-        image_files.append(file_path.absolute())
-        if len(image_files) == batch_size:
-            yield image_files
-            image_files = list()
-    if len(image_files) > 0:
-        yield image_files
-
-
-def main(_):
-    feature_extractor = FeatureExtractor()
-    data_gen = load_genome()
-    for batch, batch_images in enumerate(data_gen):
-        features = feature_extractor.get_features(batch_images)
-        print(features.shape)
-
-
-if __name__ == '__main__':
-    tf.app.run()

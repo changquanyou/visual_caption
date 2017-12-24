@@ -22,6 +22,9 @@ learning_rate_decay = 0.98
 learning_rate_step = 20000
 
 dropout_keep_prob = 0.6
+dropout_prob = 0.4
+forget_bias = 1.0
+
 initializer_scale = 0.08
 early_stopping = 100
 
@@ -66,7 +69,16 @@ class BaseModelConfig(BaseConfig):
         self.checkpoint_dir = os.path.join(self.model_dir, "checkpoint")
 
         # parameters for model training
+
+        self.residual = False
+        self.forget_bias = 1.0
+        self.num_residual_layers = 0
+
         self.dropout_keep_prob = dropout_keep_prob
+        self.dropout_prob = dropout_prob
+        self.forget_bias = forget_bias
+
+        # paramters for opt
         self.learning_rate = learning_rate  #
         self.start_decay_step = learning_start_decay_step
         self.decay_steps = learning_rate_step

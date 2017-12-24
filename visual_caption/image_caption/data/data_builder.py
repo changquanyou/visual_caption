@@ -13,9 +13,8 @@ from tensorflow.contrib.learn import ModeKeys
 from visual_caption.base.data.base_data_builder import BaseDataBuilder
 from visual_caption.image_caption.data.data_config import ImageCaptionDataConfig
 from visual_caption.image_caption.data.data_loader import ImageCaptionDataLoader
-from visual_caption.image_caption.data.data_utils import ImageCaptionDataUtils
 from visual_caption.image_caption.feature.feature_extractor import FeatureExtractor
-from visual_caption.image_caption.feature.vgg_feature_manager import FeatureManager
+
 
 class ImageCaptionDataBuilder(BaseDataBuilder):
     """
@@ -27,7 +26,6 @@ class ImageCaptionDataBuilder(BaseDataBuilder):
         super(ImageCaptionDataBuilder, self).__init__(
             data_config=data_config)
         self.data_loader = ImageCaptionDataLoader()
-        self.data_utils = ImageCaptionDataUtils()
         self.feature_extractor = FeatureExtractor()
 
     def _build_tfrecords(self, image_dir, data_gen, output_file):
@@ -160,14 +158,32 @@ class ImageCaptionDataBuilder(BaseDataBuilder):
                               output_file=output_file)
         pass
 
+    def build_vocabulary(self):
+        token_set = set()
+        token_set.add(self.data_config.token_start)
+        token_set.add(self.data_config.token_end)
+        token_set.add(self.data_config.token_unknown)
+        token_set.add(self.data_config.token_pad)
+        with open(file=self.data_config.caption_char_txt,
+                  mode='r', encoding='utf-8') as f_char:
+            captions = f_char.readlines()
+            for caption in captions:
+                for token in caption.split():
+                    token_set.add(token)
+        vocab_file = self.data_config.vocab_file
+        with open(file=vocab_file, mode='w', encoding='utf-8') as f:
+            for token in token_set:
+                f.write(token + "\n")
+
 
 def main(_):
     data_config = ImageCaptionDataConfig()
     data_builder = ImageCaptionDataBuilder(data_config=data_config)
 
+    data_builder.build_vocabulary()
     # data_builder.build_train_data()
-    data_builder.build_valid_data()
-    data_builder.build_test_data()
+    # data_builder.build_valid_data()
+    # data_builder.build_test_data()
 
 
 if __name__ == '__main__':
