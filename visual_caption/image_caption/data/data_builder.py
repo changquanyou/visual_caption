@@ -33,6 +33,7 @@ class ImageCaptionDataBuilder(BaseDataBuilder):
         super(ImageCaptionDataBuilder, self).__init__(data_config)
         # visual feature extractor based on inception_resnet_v2
         self.feature_extractor = FeatureExtractor()
+        self.data_loader = ImageCaptionDataLoader(data_config=data_config)
         pass
 
     def _to_tf_example(self, mode, image_data):
@@ -83,10 +84,10 @@ class ImageCaptionDataBuilder(BaseDataBuilder):
         bbox_features = self.feature_extractor.get_feature_from_rawdata_list(
             bbox_raw_data_list)
         bbox_features = np.asarray(bbox_features)
-        image_id_encoded = [char.encode() for char in image_id]
+        # image_id_encoded = [char.encode() for char in image_id]
         tf_context = tf.train.Features(feature={
             # image data
-            'image/image_id': self._bytes_feature_list(image_id_encoded),
+            'image/image_id': dataset_util.bytes_feature(str.encode(image_id)),
             'image/height': dataset_util.int64_feature(image_height),
             'image/width': dataset_util.int64_feature(image_width),
             'image/depth': dataset_util.int64_feature(image_depth),
