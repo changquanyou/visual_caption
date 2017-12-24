@@ -43,25 +43,29 @@ class ImageCaptionDataDetector(object):
 
     @timeit
     def build_bbox_data(self, caption_file, image_dir, target_file):
-        metadata = self.data_loader.load_data(
-            captions_file=caption_file, image_dir=image_dir)
+        data_gen = self.data_loader.load_raw_generator(
+            json_data_file=caption_file, image_dir=image_dir)
         # convert metadata of each image to bbox record
         image_list = list()  # batch data for images
         start = time.time()
-        for idx, image_data in enumerate(metadata):
-            image_filename = image_data.filename
-            image_dict = self.detector.detect_image(
-                image_path=image_filename)
-            image_dict["image_id"] = image_data.image_id
-            image_dict["image_filepath"] = image_data.filename
-            image_dict["captions"] = image_data.captions
-            image_list.append(image_dict)
-            length = len(image_list)
-            if length % 100 == 0:
-                elapsed = time.time() - start
-                print("detected {} images for {}, elapsed {}."
-                      .format(length, caption_file, elapsed))
-            if idx >= 1000:  # for partial data
+        for batch, batch_data in enumerate(data_gen):
+            for idx, image_data in enumerate(batch_data):
+                image_filename =image_data['image_file']
+                image_dict = self.detector.detect_image(
+                    image_path=image_filename)
+                image_dict['id'] = image_data['id']
+                image_dict['url'] = image_data['url']
+                image_dict["image_id"] = image_data['image_id']
+                image_dict["image_file"] = image_data['image_file']
+                image_dict["captions"] = image_data['captions']
+
+                image_list.append(image_dict)
+                length = len(image_list)
+                if length % 100 == 0:
+                    elapsed = time.time() - start
+                    print("detected {} images for {}, elapsed {}."
+                          .format(length, caption_file, elapsed))
+            if batch >= 10:  # for partial data
                 break
         with open(target_file, 'w') as fp:
             json.dump(image_list, fp=fp, sort_keys=True)
@@ -90,37 +94,40 @@ class ImageCaptionDataDetector(object):
 
         with open(target_file, 'w') as fp:
             json.dump(image_list, fp=fp, sort_keys=True)
-            print("dumped metadata from {} to {}".format(test_image_dir, target_file))
+            print("dumped metadata from {} to {}".format(
+                test_image_dir, target_file))
 
     @timeit
     def build_train_data(self):
         image_dir = self.data_config.train_image_dir
-        caption_file = self.data_config.captions_train_file
+        caption_file = self.data_config.train_json_data
         detect_file = self.data_config.detect_train_file
-        self.build_bbox_data(caption_file=caption_file,
-                             image_dir=image_dir,
-                             target_file=detect_file)
+        self.build_bbox_data(
+            caption_file=caption_file,
+            image_dir=image_dir,
+            target_file=detect_file)
 
     @timeit
     def build_valid_data(self):
         image_dir = self.data_config.valid_image_dir
-        caption_file = self.data_config.captions_valid_file
+        caption_file = self.data_config.train_json_data
         detect_file = self.data_config.detect_valid_file
-        self.build_bbox_data(caption_file=caption_file,
-                             image_dir=image_dir,
-                             target_file=detect_file)
+        self.build_bbox_data(
+            caption_file=caption_file,
+            image_dir=image_dir,
+            target_file=detect_file)
 
     @timeit
     def build_test_data(self):
         image_dir = self.data_config.test_image_dir
         detect_file = self.data_config.detect_test_file
-        self.build_bbox_test_data(test_image_dir=image_dir,
-                                  target_file=detect_file)
+        self.build_bbox_test_data(
+            test_image_dir=image_dir, target_file=detect_file)
 
     @timeit
     def build_all_bbox(self):
-        # self.build_train_data()
-        # self.build_valid_data()
+        self.build_train_data()
+        self.build_valid_data()
         self.build_test_data()
 
 

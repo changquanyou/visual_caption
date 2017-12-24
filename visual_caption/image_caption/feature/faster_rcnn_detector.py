@@ -11,9 +11,8 @@ import numpy as np
 import tensorflow as tf
 
 from object_detection.utils import label_map_util
-from tf_visgen.utils import image_utils
-from tf_visgen.utils.decorator_utils import timeit
-from tf_visgen.visgen.data.data_config import VisualGenomeDataConfig
+from visual_caption.utils import image_utils
+from visual_caption.utils.decorator_utils import timeit
 
 home = str(Path.home())  # home dir
 base_data_dir = os.path.join(home, 'data')
@@ -148,12 +147,11 @@ class FasterRCNNDetector(object):
         image_dict["bboxes"] = bboxes
         return image_dict
 
-
 def load_images():
-    data_config = VisualGenomeDataConfig()
     batch_size = 40
+    image_dir = None
     image_files = list()
-    for file_path in Path(data_config.image_dir).glob('**/*'):
+    for file_path in Path(image_dir).glob('**/*'):
         image_files.append(file_path.absolute())
         if len(image_files) == batch_size:
             yield image_files

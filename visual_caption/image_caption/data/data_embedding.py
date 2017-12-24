@@ -22,48 +22,6 @@ class ImageCaptionDataEmbedding(object):
         self.data_config = ImageCaptionDataConfig()
         self.load_embeddings()
 
-    def build_char_text(self, json_data_file, image_dir):
-        """
-        build sentence file for embeddings
-
-        example:    <S> 这 是 一 个 例 子 </S>
-        :param json_data_file:
-        :return:
-        """
-        print("begin char txt generation for {}".format(json_data_file))
-        raw_data_gen = self.data_loader.load_raw_generator(
-            json_data_file=json_data_file,
-            image_dir=image_dir
-        )
-        with open(file=self.data_config.caption_char_txt, mode='a', encoding='utf-8') as f_txt:
-            for batch, batch_data in enumerate(raw_data_gen):
-                for raw_data in batch_data:
-                    captions = raw_data['captions']
-                    for caption in captions:
-                        if len(str.strip(caption)) > 0:
-                            line = [char + ' ' for char in caption]
-                            # separate each token with a whitespace
-                            line.insert(0, self.data_config.token_start + " ")
-                            line.append(self.data_config.token_end)
-                            line.append('\n')
-                            f_txt.writelines(line)
-                if batch % 1000 == 0:
-                    print("Generating caption char txt for batch={}".format(batch * 1000))
-            print("end char txt generation for {}".format(json_data_file))
-        pass
-
-    def build_char_all(self):
-        """
-            generate　Chinese chars txt file for the train and valid dataset
-            Each sentence in test and train data is tokenized to Chinese char in per line.
-        :return:
-        """
-        print("begin char txt generation ")
-        self.build_char_text(json_data_file=self.data_config.train_json_data,
-                             image_dir=self.data_config.train_image_dir)
-        self.build_char_text(json_data_file=self.data_config.valid_json_data,
-                             image_dir=self.data_config.valid_image_dir)
-        print("end char txt  generation")
 
     def build_embeddings(self):
         sentences = LineSentence(self.data_config.caption_char_txt)

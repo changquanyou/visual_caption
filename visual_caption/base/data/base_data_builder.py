@@ -84,3 +84,10 @@ class BaseDataBuilder(object):
     def build_valid_data(self):
         raise NotImplementedError()
         pass
+
+    def build_all_data(self):
+        self.build_train_data()
+        self.build_valid_data()
+        self.build_test_data()
+        pass
+

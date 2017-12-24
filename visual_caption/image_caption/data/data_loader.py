@@ -17,17 +17,13 @@ import tensorflow as tf
 
 class ImageCaptionDataLoader(BaseDataLoader):
     """
-
     Data loader of raw data and prepare data for preprocessing
-
     Data Preprocessing:
-
         Prepare caption txt and token2vec model
     """
 
     def __init__(self, data_config=default_data_config):
         super(ImageCaptionDataLoader, self).__init__(data_config=data_config)
-        # self.load_embeddings()
 
     def load_raw_generator(self, json_data_file, image_dir):
         """
@@ -55,41 +51,41 @@ class ImageCaptionDataLoader(BaseDataLoader):
                     caption_txt = caption_txt.replace(' ', '')
                     caption_txt = caption_txt.replace('\n', '')
                     caption_list.append(caption_txt)
-
                 caption_data = {
                     'id': id, 'url': url, 'image_id': image_id,
                     'image_file': image_file, 'captions': caption_list
                 }
                 batch_data.append(caption_data)
-
                 if len(batch_data) == load_batch_size:
                     yield batch_data
                     batch_data = []
-
-                    # count += 1
-                    # if count % 1000 == 0:
-                    #     print("load {} image data instances".format(count))
 
             if len(batch_data) > 0:
                 yield batch_data
                 del batch_data
 
     def load_test_data(self):
-        return self.load_raw_generator(json_data_file=self.data_config.test_json_data,
-                                       image_dir=self.data_config.test_image_dir)
+        return self.load_raw_generator(
+            json_data_file=self.data_config.test_json_data,
+            image_dir=self.data_config.test_image_dir)
 
     def load_train_data(self):
-        return self.load_raw_generator(json_data_file=self.data_config.train_json_data,
-                                       image_dir=self.data_config.train_image_dir)
+        return self.load_raw_generator(
+            json_data_file=self.data_config.train_json_data,
+            image_dir=self.data_config.train_image_dir)
 
     def load_validation_data(self):
-        return self.load_raw_generator(json_data_file=self.data_config.valid_json_data,
-                                       image_dir=self.data_config.valid_image_dir)
+        return self.load_raw_generator(
+            json_data_file=self.data_config.valid_json_data,
+            image_dir=self.data_config.valid_image_dir)
 
 
 def main(_):
     data_loader = ImageCaptionDataLoader()
-    # data_loader.build_char_all()
+    train_gen = data_loader.load_train_data()
+    for batch, batch_data in enumerate(train_gen):
+        for idx, data in enumerate(batch_data):
+            print("batch={}, idx={}, data={}".format(batch, idx, data))
 
 
 if __name__ == '__main__':

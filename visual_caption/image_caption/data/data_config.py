@@ -25,41 +25,63 @@ class ImageCaptionDataConfig(BaseDataConfig):
         super(ImageCaptionDataConfig, self).__init__(
             mode=mode, model_name=model_name)
 
-        # self.visual_feature_size = 4096
-        self.visual_feature_size = 1536
-        self.tf_data_dir = os.path.join(self.model_data_dir,
-                                        'inception_resnet_v2')
+        self.batch_size = 100
+        self.beam_size = 5
 
-        # for train
-        self.train_rawdata_dir = os.path.join(self.model_data_dir,
-                                              "ai_challenger_caption_train_20170902")
-        self.train_json_data = os.path.join(self.train_rawdata_dir,
-                                            "caption_train_annotations_20170902.json")
-        self.train_image_dir = os.path.join(self.train_rawdata_dir,
-                                            "caption_train_images_20170902")
-        self.train_data_dir = os.path.join(self.tf_data_dir, "train")
-        self.train_tf_data_file = os.path.join(self.train_data_dir,
-                                               "image_caption_train")
+        self.num_threads = 8  # number of threads for data processing
 
-        # for validation
+        self.dim_visual_feature = 1536
+        self.dim_token_feature = 300
+        self.num_caption_max_length = 32
+
+        self.num_max_bbox = 36
+        self.num_visual_features = self.num_max_bbox + 1
+
+
+
+
+        # for raw data
+        self.train_rawdata_dir = os.path.join(
+            self.model_data_dir, "ai_challenger_caption_train_20170902")
         self.valid_rawdata_dir = os.path.join(
             self.model_data_dir, "ai_challenger_caption_validation_20170910")
+        self.test_rawdata_dir = os.path.join(
+            self.model_data_dir, "ai_challenger_caption_test1_20170923")
+
+        # for json data
+        self.train_json_data = os.path.join(
+            self.train_rawdata_dir, "caption_train_annotations_20170902.json")
         self.valid_json_data = os.path.join(
             self.valid_rawdata_dir, "caption_validation_annotations_20170910.json")
+        self.test_json_data = os.path.join(
+            self.test_rawdata_dir, "caption_test_annotations_20170910.json")
+
+        # for raw image data
+        self.train_image_dir = os.path.join(
+            self.train_rawdata_dir, "caption_train_images_20170902")
         self.valid_image_dir = os.path.join(
             self.valid_rawdata_dir, "caption_validation_images_20170910")
+        self.test_image_dir = os.path.join(
+            self.test_rawdata_dir, "caption_test1_images_20170923")
+
+        # for image region detection dir
+        self.detect_dir = os.path.join(self.model_data_dir, "detect")
+        self.detect_train_file = os.path.join(self.detect_dir, 'detect_train.json')
+        self.detect_valid_file = os.path.join(self.detect_dir, 'detect_valid.json')
+        self.detect_test_file = os.path.join(self.detect_dir, 'detect_test.json')
+
+        # for tfrecord dir
+
+        self.tf_data_dir = os.path.join(
+            self.model_data_dir, 'tf_record')
+        self.train_data_dir = os.path.join(
+            self.tf_data_dir, "train")
+        self.train_tf_data_file = os.path.join(
+            self.train_data_dir, "image_caption_train")
         self.valid_data_dir = os.path.join(
             self.tf_data_dir, "valid")
         self.valid_tf_data_file = os.path.join(
             self.valid_data_dir, "image_caption_validation")
-
-        # for test
-        self.test_rawdata_dir = os.path.join(
-            self.model_data_dir, "ai_challenger_caption_test1_20170923")
-        self.test_json_data = os.path.join(
-            self.test_rawdata_dir, "caption_test_annotations_20170910.json")
-        self.test_image_dir = os.path.join(
-            self.test_rawdata_dir, "caption_test1_images_20170923")
         self.test_data_dir = os.path.join(
             self.tf_data_dir, "test")
         self.test_tf_data_file = os.path.join(
