@@ -11,8 +11,7 @@ import math
 
 import numpy as np
 
-from visual_caption.image_caption.inference.caption import Caption
-from visual_caption.image_caption.inference.caption_top_n import TopN
+from visual_caption.image_caption.inference.caption import Caption, TopN
 
 
 class CaptionGenerator(object):
