@@ -110,7 +110,7 @@ class ImageCaptionDataDetector(object):
     @timeit
     def build_valid_data(self):
         image_dir = self.data_config.valid_image_dir
-        caption_file = self.data_config.train_json_data
+        caption_file = self.data_config.valid_json_data
         detect_file = self.data_config.detect_valid_file
         self.build_bbox_data(
             caption_file=caption_file,
@@ -126,7 +126,7 @@ class ImageCaptionDataDetector(object):
 
     @timeit
     def build_all_bbox(self):
-        self.build_train_data()
+        # self.build_train_data()
         self.build_valid_data()
         self.build_test_data()
 
