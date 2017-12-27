@@ -65,8 +65,8 @@ class ImageCaptionDataDetector(object):
                     elapsed = time.time() - start
                     print("detected {} images for {}, elapsed {}."
                           .format(length, caption_file, elapsed))
-            if batch >= 10:  # for partial data
-                break
+            # if batch >= 10:  # for partial data
+            #     break
         with open(target_file, 'w') as fp:
             json.dump(image_list, fp=fp, sort_keys=True)
             print("dumped metadata from {} to {}".format(caption_file, target_file))

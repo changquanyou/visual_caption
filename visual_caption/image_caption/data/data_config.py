@@ -37,9 +37,6 @@ class ImageCaptionDataConfig(BaseDataConfig):
         self.num_max_bbox = 36
         self.num_visual_features = self.num_max_bbox + 1
 
-
-
-
         # for raw data
         self.train_rawdata_dir = os.path.join(
             self.model_data_dir, "ai_challenger_caption_train_20170902")
