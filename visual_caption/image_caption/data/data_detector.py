@@ -126,7 +126,7 @@ class ImageCaptionDataDetector(object):
 
     @timeit
     def build_all_bbox(self):
-        self.build_train_data()
+        # self.build_train_data()
         self.build_valid_data()
         self.build_test_data()
 
