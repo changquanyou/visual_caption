@@ -65,8 +65,8 @@ class ImageCaptionDataDetector(object):
                     elapsed = time.time() - start
                     print("detected {} images for {}, elapsed {}."
                           .format(length, caption_file, elapsed))
-            if batch >= 10:  # for partial data
-                break
+            # if batch >= 10:  # for partial data
+            #     break
         with open(target_file, 'w') as fp:
             json.dump(image_list, fp=fp, sort_keys=True)
             print("dumped metadata from {} to {}".format(caption_file, target_file))
@@ -110,7 +110,7 @@ class ImageCaptionDataDetector(object):
     @timeit
     def build_valid_data(self):
         image_dir = self.data_config.valid_image_dir
-        caption_file = self.data_config.train_json_data
+        caption_file = self.data_config.valid_json_data
         detect_file = self.data_config.detect_valid_file
         self.build_bbox_data(
             caption_file=caption_file,
