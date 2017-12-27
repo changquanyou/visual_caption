@@ -22,8 +22,8 @@ faster_rcnn_detector = FasterRCNNDetector(detector_config)
 def get_image_id(image_filepath):
     idx_start = image_filepath.rfind('_')
     idx_end = image_filepath.rfind('.')
-    id_string = image_filepath[idx_start + 1:idx_end]
-    image_id = int(id_string)
+    image_id = image_filepath[idx_start + 1:idx_end]
+    # image_id = int(id_string)
     return image_id
 
 
@@ -127,7 +127,7 @@ class ImageCaptionDataDetector(object):
     @timeit
     def build_all_bbox(self):
         # self.build_train_data()
-        self.build_valid_data()
+        # self.build_valid_data()
         self.build_test_data()
 
 

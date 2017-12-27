@@ -110,8 +110,9 @@ class ImageCaptionDataReader(BaseDataReader):
                 bbox_features_shape, bbox_number, bbox_labels, bboxes, bbox_features,
                 # tf.slice(caption, begin=[], size=[0, ])
 
-                tf.concat(([token_start], caption), axis=0),
-                tf.concat((caption, [token_end]), axis=0)
+                tf.concat(([token_start], caption, [token_end]), axis=0),
+                tf.concat((caption, [token_end], [token_end]), axis=0),
+                tf.concat(([token_start], [token_start], caption), axis=0)
 
             ), num_parallel_calls=num_threads)
 
@@ -119,25 +120,26 @@ class ImageCaptionDataReader(BaseDataReader):
         dataset = dataset.map(
             lambda image_id, image_height, image_width, image_depth, image_feature,
                    bbox_features_shape, bbox_number, bbox_labels, bboxes, bbox_features,
-                   caption, target: (
+                   caption, fw_target, bw_target: (
                 image_id, image_height, image_width, image_depth, image_feature,
                 bbox_features_shape, bbox_number, bbox_labels, bboxes, bbox_features,
-                caption, target,
+                caption, fw_target, bw_target,
                 tf.cast(self.vocab_table.lookup(caption), tf.int32),
-                tf.cast(self.vocab_table.lookup(target), tf.int32)
+                tf.cast(self.vocab_table.lookup(fw_target), tf.int32),
+                tf.cast(self.vocab_table.lookup(bw_target), tf.int32)
             ), num_parallel_calls=num_threads)
 
         # Add in sequence lengths.
         dataset = dataset.map(
             lambda image_id, image_height, image_width, image_depth, image_feature,
                    bbox_features_shape, bbox_number, bbox_labels, bboxes, bbox_features,
-                   caption, target, caption_ids, target_ids: (
-
+                   caption, fw_target, bw_target,
+                   caption_ids, fw_target_ids, bw_target_ids: (
                 image_id, image_height, image_width, image_depth, image_feature,
                 bbox_features_shape, bbox_number, bbox_labels, bboxes, bbox_features,
-                caption, target, caption_ids, target_ids,
+                caption, fw_target, bw_target,
+                caption_ids, fw_target_ids, bw_target_ids,
                 tf.size(caption_ids),  # caption_length
-                tf.size(target_ids)  # target_length
             ), num_parallel_calls=num_threads)
 
         def batching_func(x):
@@ -157,24 +159,23 @@ class ImageCaptionDataReader(BaseDataReader):
                     tf.TensorShape([None, None]),  # image_bbox_features
 
                     tf.TensorShape([None]),  # caption
-                    tf.TensorShape([None]),  # target
+                    tf.TensorShape([None]),  # fw_target
+                    tf.TensorShape([None]),  # bw_target
                     tf.TensorShape([None]),  # caption_ids
-                    tf.TensorShape([None]),  # target_ids
+                    tf.TensorShape([None]),  # fw_target_ids
+                    tf.TensorShape([None]),  # bw_target_ids
 
-                    tf.TensorShape([]),  # phrase_length
-                    tf.TensorShape([]),  # target_length
+                    tf.TensorShape([]),  # caption_length
                 ),
                 padding_values=(
                     token_pad, np.int32(0), np.int32(0), np.int32(0), np.float32(0),
                     np.int32(0), np.int32(0), np.int64(0), np.int64(0), np.float32(0),
 
-                    token_pad, token_pad,
-                    np.int32(token_pad_id), np.int32(token_pad_id),
-                    np.int32(0), np.int32(0)
+                    token_pad, token_pad, token_pad,
+                    np.int32(token_pad_id), np.int32(token_pad_id), np.int32(token_pad_id),
+                    np.int32(0)
                 )
-
             )
-
         dataset = batching_func(dataset)
         return dataset
         pass
@@ -242,17 +243,21 @@ class ImageCaptionDataReader(BaseDataReader):
 def print_output(batch_data):
     id_batch, width_batch, height_batch, depth_batch, feature_batch, \
     bbox_shape_batch, bbox_num, bbox_labels, bboxes, bbox_features, \
-    caption_batch, target_batch, caption_ids, target_ids, caption_lengths, target_lengths = batch_data
+    caption_batch, fw_target_batch, bw_target_batch, \
+    caption_ids, fw_target_ids, bw_target_ids, \
+    caption_lengths = batch_data
     for idx, image_id in enumerate(id_batch):
-        print("image: image_id={0:}, width={1:4d}, height={2:4d}, feature_shape={3:4d}"
+        caption_length = caption_lengths[idx]
+        print("image: image_id={0:}, width={1:4d}, height={2:4d}, feature_shape={3:4d}, caption_length={12:2d}"
               "\n\tbbox: features_shape={4:}, num={5:2d}, labels={6:}, bboxes={7:}, features={8:}"
-              "\n\tcaption=[{9:}], \n\ttarget=[{10:}], caption_length={11:2d}, target_length={12:2d}".
+              "\n\tcaption=[{9:}]\n\tfw_target=[{10:}]\n\tbw_target=[{11:}]".
               format(image_id, width_batch[idx], height_batch[idx], len(feature_batch[idx]),
                      bbox_shape_batch[idx], bbox_num[idx], len(bbox_labels[idx]),
                      len(bboxes[idx]) // 4, len(bbox_features[idx]),
-                     str.strip("".join([token.decode() for token in caption_batch[idx]])),
-                     str.strip("".join([token.decode() for token in target_batch[idx]])),
-                     caption_lengths[idx], target_lengths[idx]))
+                     str.strip("".join([token.decode() for token in caption_batch[idx][:caption_length]])),
+                     str.strip("".join([token.decode() for token in fw_target_batch[idx][:caption_length]])),
+                     str.strip("".join([token.decode() for token in bw_target_batch[idx][:caption_length]])),
+                     caption_length))
 
     return batch_data
 

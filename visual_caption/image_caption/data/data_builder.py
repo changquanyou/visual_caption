@@ -33,6 +33,7 @@ class ImageCaptionDataBuilder(BaseDataBuilder):
         super(ImageCaptionDataBuilder, self).__init__(data_config)
         # visual feature extractor based on inception_resnet_v2
         self.data_loader = ImageCaptionDataLoader(data_config=data_config)
+        self.feature_extractor = None
         pass
 
     def _to_tf_example(self, mode, image_data):
@@ -249,10 +250,10 @@ class ImageCaptionDataBuilder(BaseDataBuilder):
 def main(_):
     data_config = ImageCaptionDataConfig()
     data_builder = ImageCaptionDataBuilder(data_config=data_config)
-    data_builder.build_char_all()
-    data_builder.build_vocabulary()
+    # data_builder.build_char_all()
+    # data_builder.build_vocabulary()
 
-    # data_builder.build_all_data()
+    data_builder.build_all_data()
 
 
 if __name__ == '__main__':
