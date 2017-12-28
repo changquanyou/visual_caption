@@ -33,7 +33,6 @@ valid_step = 10000
 
 os.environ["CUDA_VISIBLE_DEVICES"] = '0'  # 指定第一块GPU可用
 
-
 class BaseModelConfig(BaseConfig):
     """
     base configuration for all models
@@ -63,22 +62,13 @@ class BaseModelConfig(BaseConfig):
         self.log_dir = os.path.join(self.log_dir, timeString)
 
         self.log_train_dir = os.path.join(self.log_dir, 'train')
-        self.log_validation_dir = os.path.join(self.log_dir, 'validation')
+        self.log_valid_dir = os.path.join(self.log_dir, 'valid')
         self.log_test_dir = os.path.join(self.log_dir, 'test')
 
         self.checkpoint_dir = os.path.join(self.model_dir, "checkpoint")
 
         # parameters for model training
-
-        self.residual = False
-        self.forget_bias = 1.0
-        self.num_residual_layers = 0
-
         self.dropout_keep_prob = dropout_keep_prob
-        self.dropout_prob = dropout_prob
-        self.forget_bias = forget_bias
-
-        # paramters for opt
         self.learning_rate = learning_rate  #
         self.start_decay_step = learning_start_decay_step
         self.decay_steps = learning_rate_step
@@ -98,7 +88,7 @@ class BaseModelConfig(BaseConfig):
         self.num_gpus = 1
 
         config = tf.ConfigProto()
-        config.gpu_options.per_process_gpu_memory_fraction = 0.9  # 程序最多只能占用指定80%的gpu显存
+        config.gpu_options.per_process_gpu_memory_fraction = 0.8  # 程序最多只能占用指定80%的gpu显存
         config.gpu_options.allow_growth = True  # 程序按需申请内存
         config.allow_soft_placement = True
         config.log_device_placement = False

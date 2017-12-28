@@ -12,13 +12,12 @@ from tensorflow.python.layers.core import Dense
 from tensorflow.python.ops.rnn_cell_impl import GRUCell, DropoutWrapper
 
 from visual_caption.base.model.base_model import BaseModel
-from visual_caption.image_caption.data.data_embedding import ImageCaptionDataEmbedding
 from visual_caption.utils.decorator_utils import timeit, define_scope
 
 
-class ImageCaptionModel(BaseModel):
+class ImageCaptionBiModel(BaseModel):
     def __init__(self, model_config, data_reader, mode):
-        super(ImageCaptionModel, self).__init__(
+        super(ImageCaptionBiModel, self).__init__(
             model_config=model_config,
             data_reader=data_reader,
             mode=mode
@@ -72,7 +71,6 @@ class ImageCaptionModel(BaseModel):
     @timeit
     @define_scope(scope_name='embeddings')
     def _build_embeddings(self):
-        self._data_embedding = ImageCaptionDataEmbedding()
         with tf.variable_scope("seq_embedding"), tf.device("/cpu:0"):
             self.embedding_map = tf.Variable(self._data_embedding.token_embedding_matrix,
                                              dtype=self.model_config.data_type,

@@ -7,29 +7,21 @@ from __future__ import unicode_literals  # compatible with python3 unicode codin
 import tensorflow as tf
 from tensorflow.contrib import seq2seq, rnn
 from tensorflow.contrib.learn import ModeKeys
-from tensorflow.contrib.seq2seq import GreedyEmbeddingHelper
-from tensorflow.python.layers.core import Dense
-from tensorflow.python.ops.rnn_cell_impl import GRUCell, DropoutWrapper
 
 from visual_caption.base.model.base_model import BaseModel
-from visual_caption.image_caption.data.data_embedding import ImageCaptionDataEmbedding
 from visual_caption.utils.decorator_utils import timeit, define_scope
 
 
 class ImageCaptionModel(BaseModel):
     def __init__(self, model_config, data_reader, mode):
         super(ImageCaptionModel, self).__init__(
-            model_config=model_config,
-            data_reader=data_reader,
-            mode=mode
-        )
-        self.data_config = self.data_reader.data_config
+            model_config, data_reader, mode)
 
     @timeit
     @define_scope(scope_name='inputs')
     def _build_inputs(self):
         data_type = self.model_config.data_type
-        dim_visual_feature = self.data_config.dim_visual_feature
+        dim_visual_feature = self.model_config.data_config.dim_visual_feature
         if self.mode == ModeKeys.INFER:
             self.image_feature = tf.placeholder(dtype=data_type,
                                                 shape=[None, dim_visual_feature],
@@ -71,11 +63,12 @@ class ImageCaptionModel(BaseModel):
     @define_scope(scope_name="embeddings")
     def _build_embeddings(self):
 
+        self.data_config = self.model_config.data_config
         self.token_start_id = self.data_reader.vocabulary.start_id
         self.token_end_id = self.data_reader.vocabulary.end_id
         vocab_num = self.data_reader.vocabulary.num_vocab
 
-        embedding_size = self.data_config.dim_token_feature
+        embedding_size = self.model_config.data_config.dim_token_feature
         # Save the embedding size in the graph.
         tf.constant(embedding_size, name="embedding_size")
 
@@ -85,7 +78,8 @@ class ImageCaptionModel(BaseModel):
                 shape=[vocab_num + 1, embedding_size],
                 dtype=self.model_config.data_type,
                 initializer=self.emb_initializer,
-                trainable=True, name='seq_embedding_map')
+                trainable=True,
+                name='seq_embedding_map')
             seq_embeddings = tf.nn.embedding_lookup(
                 self.seq_embedding_map, self.input_seqs)
         self.input_seq_embeddings = seq_embeddings
@@ -93,18 +87,18 @@ class ImageCaptionModel(BaseModel):
         # for token begin batch embeddings
         start_embedding = tf.nn.embedding_lookup(
             self.seq_embedding_map, [self.token_start_id])
-        self.start_seq_embeddings = tf.tile(
-            input=start_embedding, multiples=[self.batch_size, 1],
-            name="start_seq_embeddings")
+        self.start_seq_embeddings = tf.tile(input=start_embedding,
+                                            multiples=[self.batch_size, 1],
+                                            name="start_seq_embeddings")
         # for token end batch embeddings
         end_embedding = tf.nn.embedding_lookup(
             self.seq_embedding_map, [self.token_end_id])
-        self.end_seq_embeddings = tf.tile(
-            input=end_embedding, multiples=[self.batch_size, 1],
-            name="end_seq_embeddings")
+        self.end_seq_embeddings = tf.tile(input=end_embedding,
+                                          multiples=[self.batch_size, 1],
+                                          name="end_seq_embeddings")
 
         # Mapping visual features into embedding space.
-        with tf.variable_scope("visual_embeddings") as visual_embedding_scope:
+        with tf.variable_scope("visual_embeddings") as scope:
             visual_embeddings = tf.layers.dense(
                 inputs=self.input_visual_features,
                 units=embedding_size)
@@ -249,8 +243,8 @@ class ImageCaptionModel(BaseModel):
             #             decay_rate=config.decay_rate,
             #             staircase=True))
             #     tf.summary.scalar('learning_rate', self.learning_rate)
-            self.optimizer = tf.train.AdamOptimizer(learning_rate=self.learning_rate)
-            tf.summary.scalar('learning_rate', self.learning_rate)
+            self.optimizer = tf.train.AdamOptimizer(learning_rate=config.learning_rate)
+            tf.summary.scalar('learning_rate', config.learning_rate)
 
     @timeit
     @define_scope(scope_name='gradients')

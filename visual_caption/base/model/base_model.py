@@ -29,26 +29,22 @@ class BaseModel(object):
         self.data_type = self.model_config.data_type
         self.mode = mode
 
-        self.summary_writer = tf.summary.FileWriter(
-            logdir=self.model_config.log_train_dir)
-        self.summary_eval_writer = tf.summary.FileWriter(
-            logdir=self.model_config.log_valid_dir)
-        self.summary_test_writer = tf.summary.FileWriter(
-            logdir=self.model_config.log_test_dir)
+        self.summary_writer = tf.summary.FileWriter(logdir=self.model_config.log_train_dir)
+        self.summary_valid_writer = tf.summary.FileWriter(logdir=self.model_config.log_valid_dir)
+        self.summary_test_writer = tf.summary.FileWriter(logdir=self.model_config.log_test_dir)
 
         # for model data pipeline
         self.batch_size = self.model_config.batch_size
         self.next_batch = self.data_reader.get_next_batch(batch_size=self.batch_size)
+        self.initializer = tf.random_uniform_initializer(
+            minval=-self.model_config.initializer_scale,
+            maxval=self.model_config.initializer_scale)
 
         # To match the "Show Attend Tell" paper we initialize all variables with a
         # truncated_normal initializer.
         self.initializer = tf.contrib.layers.xavier_initializer()
         self.const_initializer = tf.constant_initializer(0.0)
         self.emb_initializer = tf.random_uniform_initializer(minval=-1.0, maxval=1.0)
-        #
-        # self.initializer = tf.random_uniform_initializer(
-        #     minval=-self.model_config.initializer_scale,
-        #     maxval=self.model_config.initializer_scale)
 
         # build model
         self._build_model()
@@ -70,13 +66,7 @@ class BaseModel(object):
         self._build_train_op()
         self._build_summaries()
         # create a model saver to save or restore model
-
-    @timeit
-    def _get_logger(self):
-        logger = logging.getLogger('tensorflow')
-        logger.setLevel(logging.DEBUG)
-        logging.basicConfig(format="%(message)s", level=logging.DEBUG)
-        self.logger = logger
+        self.model_server = tf.train.Saver()
 
     @timeit
     @define_scope(scope_name='global_step')
@@ -113,6 +103,8 @@ class BaseModel(object):
     @define_scope(scope_name='optimizer')
     def _build_optimizer(self):
         config = self.model_config
+        # Gradients and SGD update operation for training the model.
+        # Arrange for the embedding vars to appear at the beginning.
         self.learning_rate = tf.constant(config.learning_rate)
         if self.mode == tf.contrib.learn.ModeKeys.TRAIN:
             self.learning_rate = tf.cond(
@@ -125,42 +117,61 @@ class BaseModel(object):
                     decay_rate=config.decay_rate,
                     staircase=True))
             tf.summary.scalar('learning_rate', self.learning_rate)
-            self.optimizer = tf.train.AdamOptimizer(learning_rate=self.learning_rate)
+        self.optimizer = tf.train.AdamOptimizer(learning_rate=self.learning_rate)
 
     @timeit
     @define_scope(scope_name='gradients')
     def _build_gradients(self):
         """Clipping gradients of a model."""
-        if not self.mode == ModeKeys.INFER:
+        if self.mode is not ModeKeys.INFER:
             trainables = tf.trainable_variables()
-            gradients = tf.gradients(self.loss, trainables)
-            clipped_gradients, gradient_norm = tf.clip_by_global_norm(
-                gradients, self.model_config.max_grad_norm)
-            self._gradients = clipped_gradients
-            tf.summary.scalar("grad_norm", gradient_norm)
-            tf.summary.scalar("clipped_gradient", tf.global_norm(clipped_gradients))
+            with tf.device(self._get_gpu(self.model_config.num_gpus - 1)):
+                gradients = tf.gradients(self.loss, trainables)
+                # clipped_gradients, gradient_norm = tf.clip_by_global_norm(
+                #     gradients, self.model_config.max_grad_norm)
+                self._gradients = gradients
+                # tf.summary.scalar("grad_norm", gradient_norm)
+                tf.summary.scalar("clipped_gradient", tf.global_norm(gradients))
 
     @timeit
     @define_scope(scope_name='train_op')
     def _build_train_op(self):
-        """
-         Set up the training ops.
-         """
-        if not self.mode == ModeKeys.INFER:
+        if self.mode is not ModeKeys.INFER:
             trainables = tf.trainable_variables()
             grads_and_vars = zip(self._gradients, trainables)
             self.train_op = self.optimizer.apply_gradients(grads_and_vars=grads_and_vars,
                                                            global_step=self.global_step_tensor,
                                                            name='train_step')
-            self.train_op = self.optimizer.minimize(self.loss,
-                                                    global_step=self.global_step_tensor,
-                                                    name='train_step')
 
     @timeit
     @define_scope(scope_name='summaries')
     def _build_summaries(self):
         """Attach a lot of summaries to a Tensor (for TensorBoard visualization)."""
+        for var in tf.trainable_variables():
+            tf.summary.histogram("parameters/" + var.op.name, var)
         self.summary_merged = tf.summary.merge_all()
+
+    def _next_device(self):
+        """Round robin the gpu device. (Reserve last gpu for expensive op)."""
+        if self.model_config.num_gpus == 0:
+            return ''
+        dev = '/gpu:%d' % self._cur_gpu
+        if self.model_config.num_gpus > 1:
+            self._cur_gpu = (self._cur_gpu + 1) % (self.model_config.num_gpus - 1)
+        return dev
+
+    @timeit
+    def _get_logger(self):
+        logger = logging.getLogger('tensorflow')
+        logger.setLevel(logging.DEBUG)
+        logging.basicConfig(format="%(message)s", level=logging.DEBUG)
+        self.logger = logger
+
+    def _get_gpu(self, gpu_id):
+        if self.model_config.num_gpus <= 0 or gpu_id >= self.model_config.num_gpus:
+            self.logger.error('error number of GPUs')
+            return ''
+        return '/gpu:%d' % gpu_id
 
     @timeit
     def save_model(self, sess, global_step):
@@ -168,10 +179,7 @@ class BaseModel(object):
         checkpoint_dir = self.model_config.checkpoint_dir
         if not os.path.isdir(checkpoint_dir):
             os.makedirs(checkpoint_dir)
-        model_server = tf.train.Saver()
-        model_server.save(sess=sess,
-                          save_path=os.path.join(checkpoint_dir, model_name),
-                          global_step=global_step)
+        self.model_server.save(sess, os.path.join(checkpoint_dir, model_name), global_step=global_step)
         self.logger.info("save model {} at step {}".format(model_name, global_step))
 
     @timeit
@@ -181,17 +189,16 @@ class BaseModel(object):
         :param checkpoint_path: if checkpoint is None, restore from last checkpoint
         :return:
         """
-        model_server = tf.train.Saver()
         print(" [*] Reading checkpoint...")
         if checkpoint_path is None:
             checkpoint_path = tf.train.latest_checkpoint(self.model_config.checkpoint_dir)
+
         if checkpoint_path:
             print("restoring model parameters from {}".format(checkpoint_path))
             # all_vars = tf.global_variables()
             # model_vars = [k for k in all_vars if k.name.startswith(model_name)]
-            model_server.restore(sess, checkpoint_path)
+            self.model_server.restore(sess, checkpoint_path)
             print("model  restored".format())
             return True
         else:
-            self.logger.info("No saved model found.")
             return False

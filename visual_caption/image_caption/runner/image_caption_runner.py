@@ -13,7 +13,7 @@ from visual_caption.base.base_runner import BaseRunner
 from visual_caption.image_caption.data.data_config import ImageCaptionDataConfig
 from visual_caption.image_caption.data.data_reader import ImageCaptionDataReader
 from visual_caption.image_caption.inference.image_caption_generator import ImageCaptionGenerator
-from visual_caption.image_caption.model.image_caption_bi_model import ImageCaptionModel
+from visual_caption.image_caption.model.image_caption_model import ImageCaptionModel
 from visual_caption.image_caption.model.image_caption_config import ImageCaptionModelConfig
 from visual_caption.utils.decorator_utils import timeit
 
