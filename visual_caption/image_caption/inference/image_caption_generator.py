@@ -13,7 +13,7 @@ import numpy as np
 from visual_caption.image_caption.inference.caption import Caption, TopN
 
 
-class CaptionGenerator(object):
+class ImageCaptionGenerator(object):
     """Class to generate captions from an image-to-text model."""
 
     def __init__(self, model, vocab, token_start, token_end,

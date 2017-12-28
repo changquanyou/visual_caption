@@ -14,7 +14,7 @@ from visual_caption.base.base_runner import BaseRunner
 from visual_caption.image_caption.data.data_config import ImageCaptionFullDataConfig
 from visual_caption.image_caption.data.data_reader import ImageCaptionDataReader
 from visual_caption.image_caption.feature.feature_extractor import FeatureExtractor
-from visual_caption.image_caption.inference.caption_generator import CaptionGenerator
+from visual_caption.image_caption.inference.image_caption_generator import CaptionGenerator
 from visual_caption.image_caption.model.image_caption_config import ImageCaptionConfig
 from visual_caption.image_caption.model.image_caption_model import ImageCaptionModel, ImageCaptionFullModel
 from visual_caption.utils.decorator_utils import timeit

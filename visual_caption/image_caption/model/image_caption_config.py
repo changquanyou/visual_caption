@@ -13,9 +13,9 @@ base_data_dir = os.path.join(home, 'data')
 model_data_dir = os.path.join(base_data_dir, "tf/models")
 inception_resnet_v2_ckpt = os.path.join(model_data_dir, "inception_resnet_v2_2016_08_30.ckpt")
 
-class ImageCaptionConfig(BaseModelConfig):
+class ImageCaptionModelConfig(BaseModelConfig):
     def __init__(self, data_config, model_name):
-        super(ImageCaptionConfig, self).__init__(
+        super(ImageCaptionModelConfig, self).__init__(
             data_config=data_config,
             model_name=model_name
         )
