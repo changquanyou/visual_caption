@@ -88,6 +88,7 @@ class ImageCaptionDataConfig(BaseDataConfig):
         self.caption_dir = os.path.join(self.model_data_dir, "captions")
         self.caption_char_txt = os.path.join(self.caption_dir, "caption_char.txt")
         self.caption_word_txt = os.path.join(self.caption_dir, "caption_word.txt")
+        self.caption_vocab_txt = os.path.join(self.caption_dir, "vocab.txt")
 
         # for embeddings
         self.embedding_dim_size = 300  # default dim size
@@ -96,7 +97,7 @@ class ImageCaptionDataConfig(BaseDataConfig):
         self.char2vec_model = os.path.join(self.embedding_dir, char2vec_file_name)
         word2vec_file_name = "word2vec_" + str(self.embedding_dim_size) + ".model"
         self.word2vec_model = os.path.join(self.embedding_dir, word2vec_file_name)
-        self.vocab_file = os.path.join(self.embedding_dir, "vocab.txt")
+
 
         self.vocab_char_file = os.path.join(self.embedding_dir, "vocab_char.txt")
         self.vocab_word_file = os.path.join(self.embedding_dir, "vocab_word.txt")
