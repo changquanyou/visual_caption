@@ -29,7 +29,7 @@ class ImageCaptionBiRunner(BaseRunner):
         self.data_config = ImageCaptionDataConfig()
 
         # for the consistency of forward and backward
-        self.data_config.batch_size = 100
+        self.data_config.batch_size = 200
         self.data_reader = ImageCaptionDataReader(
             data_config=self.data_config)
         self.model_config = ImageCaptionModelConfig(

@@ -22,10 +22,9 @@ class ImageCaptionDataEmbedding(object):
         self.data_config = ImageCaptionDataConfig()
         self.load_embeddings()
 
-
     def build_embeddings(self):
         sentences = LineSentence(self.data_config.caption_char_txt)
-        dims = [50, 100, 200, 300]
+        dims = [50, 100, 200, 300, 512]
         for dim_size in dims:
             model_file_name = "char2vec_" + str(dim_size) + ".model"
             model_file = os.path.join(self.data_config.embedding_dir, model_file_name)
@@ -33,6 +32,7 @@ class ImageCaptionDataEmbedding(object):
             model = Word2Vec(sentences, size=dim_size, window=5, min_count=1, workers=4)
             model.save(model_file)
             print("Generated token2vec model to {}".format(model_file))
+        pass
 
     @timeit
     def load_embeddings(self):
@@ -50,8 +50,8 @@ class ImageCaptionDataEmbedding(object):
 
         self.token2index = dict()
         self.index2token = dict()
-        self.token_embedding_matrix = np.zeros([len(self.vocab),
-                                                self.data_config.embedding_dim_size])
+        self.token_embedding_matrix = np.zeros(
+            [len(self.vocab), self.data_config.embedding_dim_size])
 
         for idx, token in enumerate(token2vec.wv.index2word):
             token_embedding = token2vec.wv[token]
@@ -102,26 +102,7 @@ class ImageCaptionDataEmbedding(object):
         print('Run `tensorboard --logdir={0}` to run visualize result on tensorboard'.format(
             self.data_config.embedding_dir))
 
-    def text_to_ids(self, text):
-
-        """
-          not each token is not in token2index dict
-          :param caption_txt:
-          :return:
-          """
-        if not self.token2index:
-            self.load_embeddings()
-
-        ids = []
-        for token in text:
-            if token in self.token2index.keys():
-                ids.append(self.token2index[token])
-            else:
-                ids.append(self.token2index[self.data_config.token_unknown])
-        return ids
-
 
 if __name__ == '__main__':
     data_embeddings = ImageCaptionDataEmbedding()
-    data_embeddings.build_char_all()
     data_embeddings.build_embeddings()
