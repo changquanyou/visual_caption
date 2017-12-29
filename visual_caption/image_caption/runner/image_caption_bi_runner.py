@@ -61,7 +61,7 @@ class ImageCaptionBiRunner(BaseRunner):
             model.fw_batch_accuracy, model.bw_batch_accuracy,
             model.mask_weights, model.input_lengths
         ]
-        format_string = "{0}: epoch={1:2d}, batch={2:6d}, batch_size={3:2d}, step={4:6d}," \
+        format_string = "{0}: epoch={1:2d}, batch={2:4d}, batch_size={3:2d}, step={4:6d}," \
                         " loss={5:.4f}, fw_acc={6:.4f}, bw_acc={7:.4f}, elapsed={8:.4f}"
         display_step = model.model_config.display_and_summary_step
         display_step = 20
@@ -93,16 +93,17 @@ class ImageCaptionBiRunner(BaseRunner):
                         image_ids, input_seqs, fw_target_seqs, bw_target_seqs, \
                         fw_predicts, bw_predicts, fw_accuracy, bw_accuracy, \
                         weights, input_lengths = result_batch
-                        # display and summarize training result
-                        batch += 1
-                        model.summary_writer.add_summary(
-                            summary=batch_summary, global_step=global_step)
-                        batch_size = len(image_ids)
-                        print(format_string.format(
-                            model.mode, epoch, batch, batch_size, global_step,
-                            loss, fw_accuracy, bw_accuracy, time.time() - step_begin))
-                        step_begin = time.time()
                         if global_step % display_step == 0:
+                            # display and summarize training result
+                            batch += 1
+                            model.summary_writer.add_summary(
+                                summary=batch_summary, global_step=global_step)
+                            batch_size = len(image_ids)
+                            print(format_string.format(
+                                model.mode, epoch, batch, batch_size, global_step,
+                                loss, fw_accuracy, bw_accuracy, time.time() - step_begin))
+                            step_begin = time.time()
+                        if global_step % 2000 == 0:
                             self._display_results(
                                 image_ids=image_ids, inputs=input_seqs,
                                 fw_targets=fw_target_seqs, bw_targets=bw_target_seqs,
@@ -110,7 +111,6 @@ class ImageCaptionBiRunner(BaseRunner):
                                 fw_accuracy=fw_accuracy, bw_accuracy=bw_accuracy,
                                 weights=weights, input_lengths=input_lengths
                             )
-                        if global_step % 2000 == 0:
                             try:
                                 valid_result = self._internal_eval(model=model, sess=sess)
                             except tf.errors.OutOfRangeError:

@@ -10,7 +10,7 @@ import math
 
 import numpy as np
 
-from tf_visgen.mscoco.inference.caption import TopN, Caption
+from visual_caption.image_caption.inference.caption import Caption, TopN
 
 
 class ImageCaptionBiGenerator(object):
@@ -164,7 +164,7 @@ class ImageCaptionBiGenerator(object):
                 self.model.language_fw_state_feed: language_fw_state,
 
                 self.model.image_feature: image_feature,
-                self.model.region_features: region_features,
+                # self.model.region_features: region_features,
 
                 self.model.input_mask: mask,
                 self.model.keep_prob: 1.0}

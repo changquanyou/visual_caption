@@ -7,8 +7,9 @@ from __future__ import unicode_literals  # compatible with python3 unicode codin
 # Data Reader class for AI_Challenge_2017
 import numpy as np
 import tensorflow as tf
-from tensorflow.python.ops import lookup_ops
 from tensorflow.contrib.learn import ModeKeys
+from tensorflow.python.ops import lookup_ops
+
 from visual_caption.base.data.base_data_reader import BaseDataReader
 from visual_caption.image_caption.data.data_config import ImageCaptionDataConfig
 
@@ -137,9 +138,8 @@ class ImageCaptionDataReader(BaseDataReader):
                    caption_ids, fw_target_ids, bw_target_ids: (
                 image_id, image_height, image_width, image_depth, image_feature,
                 bbox_features_shape, bbox_number, bbox_labels, bboxes, bbox_features,
-                caption, fw_target, bw_target,
-                caption_ids, fw_target_ids, bw_target_ids,
-                tf.size(caption_ids),  # caption_length
+                caption, fw_target, bw_target, caption_ids, fw_target_ids, bw_target_ids,
+                tf.size(caption_ids), tf.size(fw_target_ids), tf.size(bw_target_ids),  # caption_length
             ), num_parallel_calls=num_threads)
 
         def batching_func(x):
@@ -166,6 +166,8 @@ class ImageCaptionDataReader(BaseDataReader):
                     tf.TensorShape([None]),  # bw_target_ids
 
                     tf.TensorShape([]),  # caption_length
+                    tf.TensorShape([]),  # fw_target_length
+                    tf.TensorShape([]),  # bw_target_length
                 ),
                 padding_values=(
                     token_pad, np.int32(0), np.int32(0), np.int32(0), np.float32(0),
@@ -173,9 +175,10 @@ class ImageCaptionDataReader(BaseDataReader):
 
                     token_pad, token_pad, token_pad,
                     np.int32(token_pad_id), np.int32(token_pad_id), np.int32(token_pad_id),
-                    np.int32(0)
+                    np.int32(0), np.int32(0), np.int32(0)
                 )
             )
+
         dataset = batching_func(dataset)
         return dataset
         pass
