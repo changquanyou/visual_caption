@@ -59,7 +59,7 @@ class ImageCaptionGenerator(object):
             state_feed = state
             feed_dict = {
                 self.model.input_feed: input_feed,
-                self.model.state_feed: state_feed,
+                self.model.language_state_feed: state_feed,
                 self.model.image_feature: image_feature
             }
             softmax, language_new_state = sess.run(
@@ -81,7 +81,7 @@ class ImageCaptionGenerator(object):
 
         # Feed in the image to get the initial state.
         initial_state = self._initial_state(sess, image_feature)
-        initial_beam = Caption(sentence=[token_start_id], state=initial_state,
+        initial_beam = Caption(sentence=[token_start_id], state=initial_state[0],
                                logprob=0.0, score=0.0, metadata=[""])
         partial_captions = TopN(self.beam_size)
         partial_captions.push(initial_beam)

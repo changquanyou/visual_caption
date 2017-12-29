@@ -26,6 +26,7 @@ class ImageCaptionRunner(BaseRunner):
     def __init__(self):
         super(ImageCaptionRunner, self).__init__()
         self.data_config = ImageCaptionDataConfig()
+        self.data_config.reader_batch_size = 100
         self.data_reader = ImageCaptionDataReader(data_config=self.data_config)
         self.model_config = ImageCaptionModelConfig(
             data_config=self.data_config, model_name=self.data_config.model_name)
@@ -186,20 +187,21 @@ class ImageCaptionRunner(BaseRunner):
             if model.restore_model(sess):
                 sess.run(tf.tables_initializer())
                 begin = time.time()
-                dataset_init_op = model.data_reader.get_infer_init_op()
+                dataset_init_op = model.data_reader.get_valid_init_op()
                 sess.run(dataset_init_op)  # initial train data options
                 global_step = tf.train.global_step(sess, model.global_step_tensor)
                 batch = 0
                 while True:  # train each batch in a epoch
                     try:
                         batch_data = sess.run(model.next_batch)
-                        (id_batch, width_batch, height_batch, depth_batch, feature_batch,
-                         bbox_shape_batch, bbox_num, bbox_labels, bboxes, bbox_features,
-                         caption_batch, target_batch, caption_ids, target_ids, caption_lengths,
-                         target_lengths) = batch_data
-                        for idx, image_id in enumerate(id_batch):  # for each image
-                            image_feature = feature_batch[idx].reshape(1, -1)
-                            region_features = bbox_features[idx].reshape(1, 36, -1)
+                        (image_id_batch, width_batch, height_batch, depth_batch, image_feature_batch,  # for image
+                         bbox_shape_batch, bbox_num_batch, bbox_labels, bboxes, bbox_features,  # for bbox
+                         caption_batch, fw_target_batch, bw_target_batch,  # for text
+                         caption_ids, fw_target_ids, bw_target_ids,  # for ids
+                         input_lengths) = batch_data
+                        for idx, image_id in enumerate(image_id_batch):  # for each image
+                            image_feature = image_feature_batch[idx].reshape(1, -1)
+                            # region_features = bbox_features[idx].reshape(1, 36, -1)
                             print("image_id={}".format(image_id))
                             # predict multiple captions
                             predict_captions = generator.beam_search(
@@ -242,9 +244,9 @@ class ImageCaptionRunner(BaseRunner):
 
 def main(_):
     runner = ImageCaptionRunner()
-    runner.train()
+    # runner.train()
     # runner.eval()
-    # runner.infer()
+    runner.infer()
 
 
 if __name__ == '__main__':
