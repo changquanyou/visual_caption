@@ -46,9 +46,11 @@ class ImageCaptionAttentionModel(BaseModel):
             input_seqs = tf.expand_dims(self.input_feed, 1)
             self.input_seqs = input_seqs
         else:
-            id_batch, width_batch, height_batch, depth_batch, feature_batch, \
-            bbox_shape_batch, bbox_num, bbox_labels, bboxes, bbox_features, \
-            caption_batch, target_batch, caption_ids, target_ids, caption_lengths, target_lengths = self.next_batch
+            (id_batch, width_batch, height_batch, depth_batch, feature_batch,
+             bbox_shape_batch, bbox_num, bbox_labels, bboxes, bbox_features,
+             caption_batch, fw_target_batch, bw_target_batch,
+             caption_ids, fw_target_ids, bw_target_ids,
+             caption_lengths, fw_target_lengths, bw_target_lengths) = self.next_batch
 
             self.image_ids = id_batch
 
@@ -56,9 +58,11 @@ class ImageCaptionAttentionModel(BaseModel):
             self.region_features = bbox_features
 
             self.input_seqs = caption_ids
-            self.target_seqs = target_ids
+            self.fw_target_seqs = fw_target_ids
+            self.bw_target_seqs = bw_target_ids
             self.input_lengths = caption_lengths
-            self.target_lengths = target_lengths
+            self.fw_target_lengths = fw_target_lengths
+            self.bw_target_lengths = bw_target_lengths
 
             # input visual features
         expend_images = tf.expand_dims(self.image_feature, axis=1)
@@ -171,86 +175,48 @@ class ImageCaptionAttentionModel(BaseModel):
         with tf.variable_scope("attention",
                                initializer=self.initializer,
                                reuse=tf.AUTO_REUSE) as attend_scope:
-            attend_fw_rnn_cell = self.__create_rnn_cell()
-            attend_bw_rnn_cell = self.__create_rnn_cell()
+            attend_rnn_cell = self.__create_rnn_cell()
 
             # attend rnn_cell initial, shape=[batch,dim_visual_embedding]
             average_visuals = tf.reduce_mean(self.input_visual_embeddings,
                                              axis=1, name="average_visuals")
-            # initial fw token attend input
-            attend_fw_initial_inputs = tf.nn.l2_normalize(
+            # initial token attend input
+            attend_initial_inputs = tf.nn.l2_normalize(
                 tf.concat([average_visuals, self.start_seq_embeddings], axis=-1),
                 name="attend_fw_initial_inputs", dim=-1)
-            attend_fw_zero_state = attend_fw_rnn_cell.zero_state(
+            attend_zero_state = attend_rnn_cell.zero_state(
                 batch_size=batch_size, dtype=data_type)
-            attend_fw_initial_outputs, attend_fw_initial_state = attend_fw_rnn_cell(
-                attend_fw_initial_inputs, attend_fw_zero_state)
-
-            # initial bw token attend input
-            attend_bw_initial_inputs = tf.nn.l2_normalize(
-                tf.concat([average_visuals, self.end_seq_embeddings], axis=-1),
-                name="attend_bw_initial_inputs", dim=-1)
-            attend_bw_zero_state = attend_bw_rnn_cell.zero_state(
-                batch_size=batch_size, dtype=data_type)
-            attend_bw_initial_outputs, attend_bw_initial_state = attend_bw_rnn_cell(
-                attend_bw_initial_inputs, attend_bw_zero_state)
+            attend_initial_outputs, attend_initial_state = attend_rnn_cell(
+                attend_initial_inputs, attend_zero_state)
 
             # expend and tile visual_feature according with input seq
             seq_length = tf.shape(self.input_seq_embeddings)[1]
             seq_average_visuals = tf.tile(tf.expand_dims(average_visuals, axis=1),
                                           multiples=[1, seq_length, 1])
 
-            # attention input is the fusion of visual and text features
-            # for inference, this input is the fusion of visual and partial caption
-            # for train and valid, the input is the fusion of visual and whole fusion
-            # shape [batch, seq_length, dim_visual_feature]
             attend_inputs = tf.concat([seq_average_visuals, self.input_seq_embeddings], axis=-1)
             attend_inputs = tf.nn.l2_normalize(attend_inputs, name="attend_inputs", dim=-1)
 
             if self.mode == ModeKeys.INFER:
-                # for infer model, batch size is 1
-                # Placeholder for feeding a batch of concatenated states.
-                self.attend_fw_initial_state = attend_fw_initial_state
-                self.attend_bw_initial_state = attend_bw_initial_state
-
-                # Placeholder for feeding a batch of concatenated states.
-                self.attend_fw_state_feed = tf.placeholder(shape=[None, attend_fw_rnn_cell.state_size],
-                                                           name="attend_fw_state_feed", dtype=data_type)
-                self.attend_bw_state_feed = tf.placeholder(shape=[None, attend_bw_rnn_cell.state_size],
-                                                           name="attend_bw_state_feed", dtype=data_type)
-
-                attend_input_fw = tf.squeeze(attend_inputs, axis=[1], name="attend_input_fw")
-                attend_input_bw = tf.squeeze(attend_inputs, axis=[1], name="attend_input_bw")
+                self.attend_initial_state = attend_zero_state
+                self.attend_state_feed = tf.placeholder(
+                    shape=[None, attend_rnn_cell.state_size],
+                    name="attend_state_feed", dtype=data_type)
 
                 # Run one single attention step forward
-                attention_fw_outputs, attention_fw_new_state = attend_fw_rnn_cell(
-                    inputs=attend_input_fw, state=self.attend_fw_state_feed)
-
-                # Run one single attention step backward
-                attention_bw_outputs, attention_bw_new_state = attend_bw_rnn_cell(
-                    inputs=attend_input_bw, state=self.attend_bw_state_feed)
-
-                self.attention_fw_outputs = tf.expand_dims(input=attention_fw_outputs, dim=0)
-                self.attention_bw_outputs = tf.expand_dims(input=attention_bw_outputs, dim=0)
-
-                attend_outputs = tf.add_n([self.attention_fw_outputs, self.attention_bw_outputs],
-                                          name="attend_outputs")
-
+                attend_outputs, attention_new_state = attend_rnn_cell(
+                    inputs=attend_inputs, state=self.attend_state_feed)
 
             else:
-                attend_outputs, attend_states = tf.nn.bidirectional_dynamic_rnn(
-                    cell_fw=attend_fw_rnn_cell,
-                    cell_bw=attend_bw_rnn_cell,
-                    inputs=attend_inputs,
+                attend_outputs, attend_states = tf.nn.dynamic_rnn(
+                    cell=attend_rnn_cell, inputs=attend_inputs,
                     sequence_length=self.input_lengths,
-                    initial_state_fw=self.attend_fw_initial_state,
-                    initial_state_bw=self.attend_bw_initial_state,
+                    initial_state=attend_zero_state,
                     dtype=data_type)
-                attend_outputs = tf.add_n(attend_outputs, name="attend_outputs")
 
-        self.attend_fw_initial_outputs = attend_fw_initial_outputs
-        self.attend_bw_initial_outputs = attend_bw_initial_outputs
+        self.attend_initial_outputs = attend_initial_outputs
         self.attend_outputs = attend_outputs
+
         pass
 
     @timeit
@@ -261,7 +227,7 @@ class ImageCaptionAttentionModel(BaseModel):
         """
         data_type = self.model_config.data_type
         num_visual_features = self.data_config.num_visual_features
-        dim_hidden = 1000
+        dim_hidden = 256
 
         # expand to sequence length,
         # shape = [batch, seq_length, num_regions, dim_visual_embedding]
@@ -311,12 +277,8 @@ class ImageCaptionAttentionModel(BaseModel):
             axis=-2, name="attend_visual_embeddings")
 
         # batch start and end token visual initial
-        attend_fw_initial_visuals = attend_visuals[:, 0, :]
-        attend_bw_initial_visuals = attend_visuals[:, -1, :]
-
-        self.attend_fw_initial_visuals = attend_fw_initial_visuals
-        self.attend_bw_initial_visuals = attend_bw_initial_visuals
-
+        attend_initial_visuals = attend_visuals[:, 0, :]
+        self.attend_initial_visuals = attend_initial_visuals
         self.attend_visuals = attend_visuals
 
     @timeit
@@ -331,80 +293,50 @@ class ImageCaptionAttentionModel(BaseModel):
         with tf.variable_scope("language",
                                initializer=self.initializer,
                                reuse=tf.AUTO_REUSE) as language_scope:
-            language_rnn_fw_cell = self.__create_rnn_cell()
-            language_rnn_bw_cell = self.__create_rnn_cell()
+            language_rnn_cell = self.__create_rnn_cell()
 
             # language rnn_cell forward initial
             # shape = [batch, dim_visual_embedding + dim_attention]
-            language_fw_initial_inputs = tf.nn.l2_normalize(
-                tf.concat([self.attend_fw_initial_visuals, self.attend_fw_initial_outputs], axis=-1),
-                dim=-1, name="language_fw_initial_inputs")
-            language_fw_zero_state = language_rnn_fw_cell.zero_state(batch_size, data_type)
-            _, self.language_fw_initial_state = language_rnn_fw_cell(
-                language_fw_initial_inputs, language_fw_zero_state)
+            language_initial_inputs = tf.nn.l2_normalize(
+                tf.concat([self.attend_initial_visuals, self.attend_initial_outputs], axis=-1),
+                dim=-1, name="language_initial_inputs")
+            language_zero_state = language_rnn_cell.zero_state(batch_size, data_type)
 
-            # language rnn_cell backward initial
-            # shape = [batch, dim_visual_embedding + dim_attention]
-            language_bw_initial_inputs = tf.nn.l2_normalize(
-                tf.concat([self.attend_bw_initial_visuals, self.attend_bw_initial_outputs], axis=-1),
-                dim=-1, name="language_bw_initial_inputs")
-            language_bw_zero_state = language_rnn_bw_cell.zero_state(batch_size, data_type)
-            _, self.language_bw_initial_state = language_rnn_bw_cell(
-                language_bw_initial_inputs, language_bw_zero_state)
+            _, language_initial_state = language_rnn_cell(
+                language_initial_inputs, language_zero_state)
 
-        if self.mode == ModeKeys.INFER:
-            # In inference mode, states for feeding and fetching.
-            language_fw_state_feed = tf.placeholder(shape=[None, language_rnn_fw_cell.state_size],
-                                                    name="language_fw_state_feed", dtype=data_type)
-            language_bw_state_feed = tf.placeholder(shape=[None, language_rnn_bw_cell.state_size],
-                                                    name="language_bw_state_feed", dtype=data_type)
-
-            attend_visuals = tf.squeeze(self.attend_visuals, axis=0)
-            attention_fw_outputs = tf.squeeze(self.attention_fw_outputs, axis=0)
-            attention_bw_outputs = tf.squeeze(self.attention_bw_outputs, axis=0)
-
-            language_input_fw = tf.nn.l2_normalize(
-                tf.concat([attend_visuals, attention_fw_outputs], axis=-1),
-                dim=-1, name="language_fw_input")
-
-            language_input_bw = tf.nn.l2_normalize(
-                tf.concat([attend_visuals, attention_bw_outputs], axis=-1),
-                dim=-1, name="language_bw_input")
-
-            # Run one single language step.
-            language_fw_outputs, language_fw_new_state = language_rnn_fw_cell(
-                inputs=language_input_fw, state=language_fw_state_feed)
-
-            language_bw_outputs, language_bw_new_state = language_rnn_bw_cell(
-                inputs=language_input_bw, state=language_bw_state_feed)
-
-            language_outputs = (language_fw_outputs, language_bw_outputs)
-            language_new_states = (language_fw_new_state, language_bw_new_state)
-
-        else:
-            #  train and eval inputs for language_rnn_cell
-            #  shape=[batch, seq_lengths,[visual_embedding+attend_size]]
             language_inputs = tf.nn.l2_normalize(
                 tf.concat([self.attend_visuals, self.attend_outputs], axis=-1),
                 dim=-1, name="language_inputs")
-            language_outputs, language_state = tf.nn.bidirectional_dynamic_rnn(
-                cell_fw=language_rnn_fw_cell,
-                cell_bw=language_rnn_bw_cell,
+
+        if self.mode == ModeKeys.INFER:
+            # In inference mode, states for feeding and fetching.
+            self.language_state_feed = tf.placeholder(
+                shape=[None, language_rnn_cell.state_size],
+                name="language_state_feed", dtype=data_type)
+
+            self.language_initial_state = language_zero_state
+
+            # Run one single language step.
+            language_outputs, self.language_new_state = language_rnn_cell(
+                inputs=language_inputs, state=self.language_state_feed)
+
+        else:
+            language_outputs, language_state = tf.nn.dynamic_rnn(
+                cell=language_rnn_cell,
                 inputs=language_inputs,
                 sequence_length=self.input_lengths,
-                initial_state_fw=self.language_fw_initial_state,
-                initial_state_bw=self.language_bw_initial_state,
+                initial_state=language_zero_state,
                 dtype=data_type)
 
-        self.decoder_outputs = tf.concat(
-            values=language_outputs, axis=-1, name="language_outputs")
+        self.language_outputs = language_outputs
 
     @timeit
     @define_scope(scope_name="losses")
     def _build_loss(self):
         # Compute logits and weights
         vocab_size = self.data_reader.vocabulary.num_vocab
-        self.outputs = self.decoder_outputs
+        self.outputs = self.language_outputs
         with tf.variable_scope("logits") as logits_scope:
             logits = tf.contrib.layers.fully_connected(
                 inputs=self.outputs,
@@ -417,39 +349,68 @@ class ImageCaptionAttentionModel(BaseModel):
         if self.mode == ModeKeys.INFER:
             self.softmax = tf.nn.softmax(logits, name="softmax")
         else:
-            weights = tf.sequence_mask(lengths=self.target_lengths,
+            weights = tf.sequence_mask(lengths=self.fw_target_lengths,
                                        dtype=self.outputs.dtype,
                                        name='masks')
-            batch_loss = seq2seq.sequence_loss(logits=logits,
-                                               targets=self.target_seqs,
-                                               weights=weights,
-                                               name="sequence_loss")
-            self.loss = batch_loss
-            tf.losses.add_loss(batch_loss)
-            total_loss = tf.losses.get_total_loss()
-            # Add summaries.
-            tf.summary.scalar("batch-loss", batch_loss)
-            tf.summary.scalar("total-loss", total_loss)
-            self.total_loss = total_loss
-            self.target_cross_entropy_losses = batch_loss  # Used in evaluation.
-            self.target_cross_entropy_loss_weights = weights  # Used in evaluation.
+            self.mask_weights = weights
+            batch_loss = seq2seq.sequence_loss(
+                logits=logits, targets=self.fw_target_seqs,
+                weights=weights, name="sequence_loss")
 
-            correct_prediction = tf.equal(self.predictions, self.target_seqs)
+            self.loss = batch_loss
+            tf.summary.scalar("batch-loss", self.loss)
+
+            correct_prediction = tf.equal(self.predictions, self.fw_target_seqs)
             batch_accuracy = tf.div(tf.reduce_sum(
                 tf.multiply(tf.cast(correct_prediction, tf.float32), weights)),
                 tf.reduce_sum(weights), name="batch_accuracy")
             self.accuracy = batch_accuracy
             tf.summary.scalar("accuracy", self.accuracy)
 
+    pass
+
     @timeit
-    def _decode(self):
-        """
-        decode:
-            p(y(t)|y(1:t-1)) = softmax( W(p)* h_language(t)+b(p) )
-        :return:
-        """
-        assert self.mode == ModeKeys.INFER
+    @define_scope(scope_name='optimizer')
+    def _build_optimizer(self):
+        config = self.model_config
+        # Gradients and SGD update operation for training the model.
+        # Arrange for the embedding vars to appear at the beginning.
+        # self.learning_rate = tf.constant(config.learning_rate)
+        if self.mode == tf.contrib.learn.ModeKeys.TRAIN:
+            #     self.learning_rate = tf.cond(
+            #         self.global_step_tensor < config.start_decay_step,
+            #         lambda: self.learning_rate,
+            #         lambda: tf.train.exponential_decay(
+            #             learning_rate=self.learning_rate,
+            #             global_step=(self.global_step_tensor - config.start_decay_step),
+            #             decay_steps=config.decay_steps,
+            #             decay_rate=config.decay_rate,
+            #             staircase=True))
+            #     tf.summary.scalar('learning_rate', self.learning_rate)
+            self.optimizer = tf.train.AdamOptimizer(learning_rate=config.learning_rate)
+            tf.summary.scalar('learning_rate', config.learning_rate)
 
-    pass
+    @timeit
+    @define_scope(scope_name='gradients')
+    def _build_gradients(self):
+        """Clipping gradients of a model."""
+        # if self.mode is not ModeKeys.INFER:
+        #     trainables = tf.trainable_variables()
+        #     with tf.device(self._get_gpu(self.model_config.num_gpus - 1)):
+        #         gradients = tf.gradients(self.loss, trainables)
+        #         # clipped_gradients, gradient_norm = tf.clip_by_global_norm(
+        #         #     gradients, self.model_config.max_grad_norm)
+        #         self._gradients = gradients
+        #         # tf.summary.scalar("grad_norm", gradient_norm)
+        #         tf.summary.scalar("clipped_gradient", tf.global_norm(gradients))
 
-    pass
+    @timeit
+    @define_scope(scope_name='train_op')
+    def _build_train_op(self):
+        if self.mode == ModeKeys.TRAIN:
+            #     trainables = tf.trainable_variables()
+            #     grads_and_vars = zip(self._gradients, trainables)
+            #     self.train_op = self.optimizer.apply_gradients(grads_and_vars=grads_and_vars,
+            #                                                    global_step=self.global_step_tensor,
+            #                                                    name='train_step')
+            self.train_op = self.optimizer.minimize(self.loss, global_step=self.global_step_tensor)
