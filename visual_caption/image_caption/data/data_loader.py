@@ -29,7 +29,7 @@ class ImageCaptionDataLoader(BaseDataLoader):
         """
         load json file and yield data in batch
         :param json_data_file:
-        :param batch_size:
+        :param image_dir:
         :return:
         """
         batch_data = []
