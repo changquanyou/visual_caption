@@ -29,12 +29,14 @@ class ImageCaptionModelConfig(BaseModelConfig):
         self.num_layers = 1  # number of hidden layers
         self.num_hidden_unit = 300 # number of neural units in each hidden layers
 
+        self.dim_fused_feature = 256
+
         self.length_max_output = 64
 
         self.train_embeddings = True
         self.pass_hidden_state = False  # whether passing hidden or not during decoding
 
-        self.attention_mechanism = "normed_bahdanau"
+
         self.num_attention_unit = 100
         self.num_attention_layer = 20
         self.beam_width = 0

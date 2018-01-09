@@ -244,11 +244,11 @@ class ImageCaptionDataReader(BaseDataReader):
 
 
 def print_output(batch_data):
-    id_batch, width_batch, height_batch, depth_batch, feature_batch, \
-    bbox_shape_batch, bbox_num, bbox_labels, bboxes, bbox_features, \
-    caption_batch, fw_target_batch, bw_target_batch, \
-    caption_ids, fw_target_ids, bw_target_ids, \
-    caption_lengths = batch_data
+    (id_batch, width_batch, height_batch, depth_batch, feature_batch,
+     bbox_shape_batch, bbox_num, bbox_labels, bboxes, bbox_features,
+     caption_batch, fw_target_batch, bw_target_batch,
+     caption_ids, fw_target_ids, bw_target_ids,
+     caption_lengths, fw_target_lengths, bw_target_lengths) = batch_data
     for idx, image_id in enumerate(id_batch):
         caption_length = caption_lengths[idx]
         print("image: image_id={0:}, width={1:4d}, height={2:4d}, feature_shape={3:4d}, caption_length={12:2d}"
