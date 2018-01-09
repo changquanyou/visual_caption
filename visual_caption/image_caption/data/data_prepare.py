@@ -21,7 +21,7 @@ class ImageCaptionDataPrepare(object):
         pass
 
     @timeit
-    def build_vocabulary(self):
+    def build_char_vocab(self):
         token_set = set()
         token_set.add(self.data_config.token_start)
         token_set.add(self.data_config.token_end)
@@ -33,11 +33,10 @@ class ImageCaptionDataPrepare(object):
             for caption in captions:
                 for token in caption.split():
                     token_set.add(token)
-        vocab_file = self.data_config.caption_vocab_txt
+        vocab_file = self.data_config.vocab_char_txt
         with open(file=vocab_file, mode='w', encoding='utf-8') as f:
             for token in token_set:
                 f.write(token + "\n")
-
 
     @timeit
     def build_char_all(self):
@@ -82,7 +81,6 @@ class ImageCaptionDataPrepare(object):
                     print("Generating caption char txt for batch={}".format(batch * 1000))
         pass
 
-
     pass
 
 
@@ -90,7 +88,7 @@ def main(_):
     data_config = ImageCaptionDataConfig()
     data_builder = ImageCaptionDataPrepare(data_config=data_config)
     data_builder.build_char_all()
-    data_builder.build_vocabulary()
+    data_builder.build_char_vocab()
     pass
 
 

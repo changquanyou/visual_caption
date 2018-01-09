@@ -79,9 +79,9 @@ class ImageCaptionDataReader(BaseDataReader):
 
     def __init__(self, data_config):
         self.vocab_table = lookup_ops.index_table_from_file(
-            vocabulary_file=data_config.vocab_file,
+            vocabulary_file=data_config.vocab_char_txt,
             default_value=0)
-        self.vocabulary = Vocabulary(vocab_file=data_config.vocab_file,
+        self.vocabulary = Vocabulary(vocab_file=data_config.vocab_char_txt,
                                      start_word=data_config.token_start,
                                      end_word=data_config.token_end,
                                      unk_word=data_config.token_unknown)
