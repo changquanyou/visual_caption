@@ -260,14 +260,12 @@ class ImageCaptionBiRunner(BaseRunner):
                             caption_text = b' '.join(caption_batch[idx][:caption_length]).decode('utf-8')
                             print("target_caption: {}".format(caption_text))
                             print("forward:----------------------------------------")
-                            for i in range(self.data_config.beam_size):
-                                caption = fw_predict_captions[i]
+                            for idx,caption in enumerate(fw_predict_captions):
                                 caption_text = [self.index2token[id] for id in caption.sentence]
                                 print("\tfw_beam_idx:{:1d}, logprob:{:4.4f}, caption: {}"
                                       .format(idx, caption.logprob, " ".join(caption_text)))
                             print("backward:----------------------------------------")
-                            for i in range(self.data_config.beam_size):
-                                caption = bw_predict_captions[i]
+                            for idx, caption in enumerate(bw_predict_captions):
                                 caption_text = [self.index2token[id] for id in reversed(caption.sentence)]
                                 print("\tbw_beam_idx:{:1d}, logprob:{:4.4f}, caption: {}"
                                       .format(idx, caption.logprob, " ".join(caption_text)))
@@ -399,9 +397,9 @@ class ImageCaptionBiRunner(BaseRunner):
 
 def main(_):
     runner = ImageCaptionBiRunner()
-    runner.train()
+    # runner.train()
     # runner.eval()
-    # runner.infer()
+    runner.infer()
     # runner.infer_fw_greedy()
     # runner.infer_bw_greedy()
 
