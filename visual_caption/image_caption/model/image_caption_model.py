@@ -8,11 +8,11 @@ import tensorflow as tf
 from tensorflow.contrib import seq2seq, rnn
 from tensorflow.contrib.learn import ModeKeys
 
-from visual_caption.base.model.base_model import BaseModel
+from visual_caption.image_caption.model.image_caption_base_model import ImageCaptionBaseModel
 from visual_caption.utils.decorator_utils import timeit, define_scope
 
 
-class ImageCaptionModel(BaseModel):
+class ImageCaptionModel(ImageCaptionBaseModel):
     def __init__(self, model_config, data_reader, mode):
         super(ImageCaptionModel, self).__init__(
             model_config, data_reader, mode)
@@ -224,49 +224,3 @@ class ImageCaptionModel(BaseModel):
                     tf.reduce_sum(weights), name="batch_accuracy")
                 self.accuracy = batch_accuracy
                 tf.summary.scalar("accuracy", self.accuracy)
-
-    @timeit
-    @define_scope(scope_name='optimizer')
-    def _build_optimizer(self):
-        config = self.model_config
-        # Gradients and SGD update operation for training the model.
-        # Arrange for the embedding vars to appear at the beginning.
-        # self.learning_rate = tf.constant(config.learning_rate)
-        if self.mode == tf.contrib.learn.ModeKeys.TRAIN:
-            #     self.learning_rate = tf.cond(
-            #         self.global_step_tensor < config.start_decay_step,
-            #         lambda: self.learning_rate,
-            #         lambda: tf.train.exponential_decay(
-            #             learning_rate=self.learning_rate,
-            #             global_step=(self.global_step_tensor - config.start_decay_step),
-            #             decay_steps=config.decay_steps,
-            #             decay_rate=config.decay_rate,
-            #             staircase=True))
-            #     tf.summary.scalar('learning_rate', self.learning_rate)
-            self.optimizer = tf.train.AdamOptimizer(learning_rate=config.learning_rate)
-            tf.summary.scalar('learning_rate', config.learning_rate)
-
-    @timeit
-    @define_scope(scope_name='gradients')
-    def _build_gradients(self):
-        """Clipping gradients of a model."""
-        # if self.mode is not ModeKeys.INFER:
-        #     trainables = tf.trainable_variables()
-        #     with tf.device(self._get_gpu(self.model_config.num_gpus - 1)):
-        #         gradients = tf.gradients(self.loss, trainables)
-        #         # clipped_gradients, gradient_norm = tf.clip_by_global_norm(
-        #         #     gradients, self.model_config.max_grad_norm)
-        #         self._gradients = gradients
-        #         # tf.summary.scalar("grad_norm", gradient_norm)
-        #         tf.summary.scalar("clipped_gradient", tf.global_norm(gradients))
-
-    @timeit
-    @define_scope(scope_name='train_op')
-    def _build_train_op(self):
-        if self.mode == ModeKeys.TRAIN:
-            #     trainables = tf.trainable_variables()
-            #     grads_and_vars = zip(self._gradients, trainables)
-            #     self.train_op = self.optimizer.apply_gradients(grads_and_vars=grads_and_vars,
-            #                                                    global_step=self.global_step_tensor,
-            #                                                    name='train_step')
-            self.train_op = self.optimizer.minimize(self.loss, global_step=self.global_step_tensor)
