@@ -13,8 +13,8 @@ from visual_caption.base.base_runner import BaseRunner
 from visual_caption.image_caption.data.data_config import ImageCaptionDataConfig
 from visual_caption.image_caption.data.data_reader import ImageCaptionDataReader
 from visual_caption.image_caption.inference.image_caption_generator import ImageCaptionGenerator
-from visual_caption.image_caption.model.image_caption_model import ImageCaptionModel
 from visual_caption.image_caption.model.image_caption_config import ImageCaptionModelConfig
+from visual_caption.image_caption.model.image_caption_model import ImageCaptionModel
 from visual_caption.utils.decorator_utils import timeit
 
 
@@ -198,7 +198,7 @@ class ImageCaptionRunner(BaseRunner):
                          bbox_shape_batch, bbox_num_batch, bbox_labels, bboxes, bbox_features,  # for bbox
                          caption_batch, fw_target_batch, bw_target_batch,  # for text
                          caption_ids, fw_target_ids, bw_target_ids,  # for ids
-                         input_lengths) = batch_data
+                         input_lengths, fw_target_lengths, bw_target_lengths) = batch_data
                         for idx, image_id in enumerate(image_id_batch):  # for each image
                             image_feature = image_feature_batch[idx].reshape(1, -1)
                             # region_features = bbox_features[idx].reshape(1, 36, -1)
