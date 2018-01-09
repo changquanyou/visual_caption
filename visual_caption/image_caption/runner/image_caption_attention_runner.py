@@ -4,15 +4,13 @@ from __future__ import division
 from __future__ import print_function
 from __future__ import unicode_literals  # compatible with python3 unicode coding
 
-import os
 import time
 
 import tensorflow as tf
 from tensorflow.contrib.learn import ModeKeys
 
 from visual_caption.base.base_runner import BaseRunner
-from visual_caption.image_caption.data.data_config import ImageCaptionFullDataConfig, ImageCaptionAttentionDataConfig, \
-    ImageCaptionDataConfig
+from visual_caption.image_caption.data.data_config import ImageCaptionDataConfig
 from visual_caption.image_caption.data.data_reader import ImageCaptionDataReader
 from visual_caption.image_caption.inference.caption_attention_generator import CaptionAttentionGenerator
 from visual_caption.image_caption.model.image_caption_attention_model import ImageCaptionAttentionModel
@@ -54,9 +52,13 @@ class ImageCaptionAttentionRunner(BaseRunner):
             model_config=self.model_config,
             data_reader=self.data_reader,
             mode=ModeKeys.TRAIN)
-        fetches = [model.summary_merged, model.loss, model.accuracy, model.train_op,
-                   model.image_ids, model.input_seqs, model.fw_target_seqs, model.predictions,
-                   model.mask_weights, model.input_lengths]
+        fetches = [
+            model.summary_merged, model.loss,
+            model.accuracy, model.train_op,
+            model.image_ids, model.input_seqs,
+            model.fw_target_seqs, model.predicts,
+            model.mask_weights, model.input_lengths
+        ]
         format_string = "{0}: epoch={1:2d}, batch={2:4d}, batch_size={3:2d}, " \
                         "step={4:6d}, loss={5:.6f}, acc={6:.6f}, elapsed={7:.6f}"
         with tf.Session(config=self.model_config.sess_config) as sess:
@@ -82,8 +84,8 @@ class ImageCaptionAttentionRunner(BaseRunner):
                     try:
                         result_batch = sess.run(fetches)  # run training step
                         global_step = tf.train.global_step(sess, model.global_step_tensor)
-                        batch_summary, loss, acc, _, image_ids, input_seqs, \
-                        target_seqs, predicts, weights, input_lengths = result_batch
+                        (batch_summary, loss, acc, _, image_ids, input_seqs,
+                         target_seqs, predicts, weights, input_lengths) = result_batch
                         batch_size = len(predicts)
                         batch += 1
                         # display and summarize training result
@@ -177,11 +179,10 @@ class ImageCaptionAttentionRunner(BaseRunner):
 
         pass
 
-
     def infer(self):
         infer_model = ImageCaptionAttentionModel(model_config=self.model_config,
-                                        data_reader=self.data_reader,
-                                        mode=ModeKeys.INFER)
+                                                 data_reader=self.data_reader,
+                                                 mode=ModeKeys.INFER)
         model = infer_model
         # Initialize beam search Caption Generator
         caption_max_length = self.data_config.num_caption_max_length
@@ -207,14 +208,14 @@ class ImageCaptionAttentionRunner(BaseRunner):
                          bbox_shape_batch, bbox_num_batch, bbox_labels, bboxes, bbox_features,  # for bbox
                          caption_batch, fw_target_batch, bw_target_batch,  # for text
                          caption_ids, fw_target_ids, bw_target_ids,  # for ids
-                         input_lengths,fw_target_lengths,bw_target_lengths) = batch_data
+                         input_lengths, fw_target_lengths, bw_target_lengths) = batch_data
                         for idx, image_id in enumerate(image_id_batch):  # for each image
                             image_feature = image_feature_batch[idx].reshape(1, -1)
                             region_features = bbox_features[idx].reshape(1, 36, -1)
                             print("image_id={}".format(image_id))
                             # predict multiple captions
                             predict_captions = generator.beam_search(
-                                sess, image_feature,region_features)
+                                sess, image_feature, region_features)
 
                             for index, predict_caption in enumerate(predict_captions):
                                 # convert each caption_ids into caption_texts
@@ -228,7 +229,6 @@ class ImageCaptionAttentionRunner(BaseRunner):
                         break  # break the training while True
 
         pass
-
 
     def _get_sequence(self, seq_ids, length):
         seq_text = [self.index2token[id] for idx, id in enumerate(seq_ids) if idx < length]
@@ -257,9 +257,9 @@ class ImageCaptionAttentionRunner(BaseRunner):
 
 def main(_):
     runner = ImageCaptionAttentionRunner()
-    # runner.train()
+    runner.train()
     # runner.eval()
-    runner.infer()
+    # runner.infer()
 
 
 if __name__ == '__main__':

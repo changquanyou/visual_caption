@@ -25,7 +25,6 @@ class ImageCaptionAttentionModel(ImageCaptionBaseModel):
         super(ImageCaptionAttentionModel, self).__init__(
             model_config, data_reader, mode)
 
-
     @timeit
     @define_scope(scope_name="inputs")
     def _build_inputs(self):
@@ -48,8 +47,7 @@ class ImageCaptionAttentionModel(ImageCaptionBaseModel):
              bbox_shape_batch, bbox_num, bbox_labels, bboxes, bbox_features,
              caption_batch, fw_target_batch, bw_target_batch,
              caption_ids, fw_target_ids, bw_target_ids,
-             caption_lengths, fw_target_lengths, bw_target_lengths
-             ) = self.next_batch
+             caption_lengths, fw_target_lengths, bw_target_lengths) = self.next_batch
 
             self.image_ids = id_batch
 
@@ -57,13 +55,13 @@ class ImageCaptionAttentionModel(ImageCaptionBaseModel):
             self.region_features = bbox_features
 
             self.input_seqs = caption_ids
-            self.target_lengths = caption_lengths
-            self.target_seqs = fw_target_ids
-            # self.bw_target_seqs = bw_target_ids
-
             self.input_lengths = caption_lengths
-            self.target_lengths = fw_target_lengths
-            # self.bw_target_lengths = bw_target_lengths
+
+            self.fw_target_seqs = fw_target_ids
+            self.fw_target_lengths = fw_target_lengths
+
+            self.bw_target_seqs = bw_target_ids
+            self.bw_target_lengths = bw_target_lengths
 
             # input visual features
         expend_images = tf.expand_dims(self.image_feature, axis=1)
@@ -125,7 +123,6 @@ class ImageCaptionAttentionModel(ImageCaptionBaseModel):
             self.input_visual_embeddings = tf.nn.l2_normalize(
                 visual_embeddings, dim=-1, name="input_visual_embeddings")
         pass
-
 
     @timeit
     @define_scope(scope_name="graph")
@@ -340,10 +337,9 @@ class ImageCaptionAttentionModel(ImageCaptionBaseModel):
                 weights_initializer=self.initializer,
                 scope=logits_scope)
 
-        self.predictions = tf.cast(tf.argmax(logits, axis=-1), tf.int32)
-        if self.mode == ModeKeys.INFER:
-            self.softmax = tf.nn.softmax(logits, name="softmax")
-        else:
+        self.predicts = tf.cast(tf.argmax(logits, axis=-1), tf.int32)
+        self.softmax = tf.nn.softmax(logits, name="softmax")
+        if self.mode is not ModeKeys.INFER:
             weights = tf.sequence_mask(lengths=self.fw_target_lengths,
                                        dtype=self.outputs.dtype,
                                        name='masks')
@@ -351,11 +347,10 @@ class ImageCaptionAttentionModel(ImageCaptionBaseModel):
             batch_loss = seq2seq.sequence_loss(
                 logits=logits, targets=self.fw_target_seqs,
                 weights=weights, name="sequence_loss")
-
             self.loss = batch_loss
             tf.summary.scalar("batch-loss", self.loss)
 
-            correct_prediction = tf.equal(self.predictions, self.fw_target_seqs)
+            correct_prediction = tf.equal(self.predicts, self.fw_target_seqs)
             batch_accuracy = tf.div(tf.reduce_sum(
                 tf.multiply(tf.cast(correct_prediction, tf.float32), weights)),
                 tf.reduce_sum(weights), name="batch_accuracy")

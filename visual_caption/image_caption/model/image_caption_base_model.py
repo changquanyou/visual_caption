@@ -15,8 +15,6 @@ class ImageCaptionBaseModel(BaseModel):
     def __init__(self, model_config, data_reader, mode):
         super(ImageCaptionBaseModel, self).__init__(
             model_config, data_reader, mode)
-        self.loss = None
-
 
     @timeit
     @define_scope(scope_name='inputs')
