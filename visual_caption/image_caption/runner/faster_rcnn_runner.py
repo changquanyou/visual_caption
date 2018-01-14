@@ -15,7 +15,7 @@ from visual_caption.base.base_runner import BaseRunner
 from visual_caption.image_caption.data.data_config import ImageCaptionDataConfig
 from visual_caption.image_caption.data.data_reader import ImageCaptionDataReader
 from visual_caption.image_caption.model.faster_rcnn_model import FasterRCNNModel
-from visual_caption.image_caption.model.image_caption_config import ImageCaptionConfig
+from visual_caption.image_caption.model.image_caption_config import ImageCaptionModelConfig
 from visual_caption.utils import image_utils
 from visual_caption.utils.decorator_utils import timeit
 
@@ -43,7 +43,7 @@ class FasterRCNNModelRunner(BaseRunner):
 
         self.data_config = ImageCaptionDataConfig()
         self.data_reader = ImageCaptionDataReader(data_config=self.data_config)
-        self.model_config = ImageCaptionConfig(data_config=self.data_config,
+        self.model_config = ImageCaptionModelConfig(data_config=self.data_config,
                                                model_name="image_caption_faster_rcnn")
 
         self.index2token = self.data_reader.data_embedding.index2token

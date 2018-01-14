@@ -43,6 +43,7 @@ class ImageCaptionDataDetector(object):
 
     @timeit
     def build_bbox_data(self, caption_file, image_dir, target_file):
+        print('[caption file is {},image_dir is {}]'.format(caption_file,image_dir))
         data_gen = self.data_loader.load_raw_generator(
             json_data_file=caption_file, image_dir=image_dir)
         # convert metadata of each image to bbox record
@@ -127,8 +128,8 @@ class ImageCaptionDataDetector(object):
     @timeit
     def build_all_bbox(self):
         # self.build_train_data()
-        # self.build_valid_data()
-        self.build_test_data()
+         self.build_valid_data()
+        #self.build_test_data()
 
 
 def main(_):

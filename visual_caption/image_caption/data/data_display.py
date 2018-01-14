@@ -20,18 +20,17 @@ class DataDisplay(object):
         pass
 
     def display_image(self):
-        data_gen = self.data_loader.load_data_generator(mode='train')
+        data_gen = self.data_loader.load_data_generator(mode='validation')
         for batch, batch_data in enumerate(data_gen):
             for data in batch_data:
                 image_file = data['image_file']
 
                 raw_image = io.imread(image_file)
                 image_string = raw_image.tostring()
-
                 decoded_image = np.fromstring(image_string, dtype=np.uint8)
                 decoded_image = decoded_image.reshape(raw_image.shape)
                 io.imshow(decoded_image)
-
+                io.show()
                 print("{}".format(np.allclose(raw_image, decoded_image)))
 
 

@@ -6,7 +6,8 @@ from __future__ import unicode_literals  # compatible with python3 unicode codin
 
 import os
 
-import ijson.backends.yajl2_cffi as ijson
+#import ijson.backends.yajl2_c as ijson
+import ijson as ijson
 
 from visual_caption.base.data.base_data_loader import BaseDataLoader
 from visual_caption.image_caption.data.data_config import ImageCaptionDataConfig
@@ -79,7 +80,14 @@ class ImageCaptionDataLoader(BaseDataLoader):
             json_data_file=self.data_config.valid_json_data,
             image_dir=self.data_config.valid_image_dir)
 
-
+    def load_data_generator(self,mode='train'):
+        print('[data set choose for {}]'.format(mode))
+        if 'train' == mode:
+            return self.load_train_data()
+        elif 'validation' == mode:
+            return self.load_validation_data()
+        else:
+            self.load_test_data()
 def main(_):
     data_loader = ImageCaptionDataLoader()
     train_gen = data_loader.load_train_data()

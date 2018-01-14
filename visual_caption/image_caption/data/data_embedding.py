@@ -105,4 +105,5 @@ class ImageCaptionDataEmbedding(object):
 
 if __name__ == '__main__':
     data_embeddings = ImageCaptionDataEmbedding()
+    #data_embeddings.visualize('')
     data_embeddings.build_embeddings()
